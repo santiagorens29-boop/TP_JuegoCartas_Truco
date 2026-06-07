@@ -14,7 +14,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 #       "juego": objeto_truco,
 #       "max_jugadores": 2, (o 4, o 6)
 #       "jugadores": [id_sesion1, id_sesion2, ...],
-#       "espectadores": [id_sesion3, ...]
+#       "espectadores": [id_sesion3, ...],
+#       "turno_actual": 0  # 💡 Índice del jugador que tiene el permiso de lanzar
 #   }
 # }
 PARTIDAS = {}
@@ -40,14 +41,14 @@ def handle_crear_sala(data):
         return
 
     # Instanciamos el Truco de tu carpeta juegos
-    # Nota de escalabilidad para la V2 final: con un IF acá podés cambiar a Uno() o Poker() según el menú
     instancia_juego = Truco()
     
     PARTIDAS[codigo] = {
         "juego": instancia_juego,
         "max_jugadores": max_jugadores,
         "jugadores": [id_sesion], # El creador es el primer jugador
-        "espectadores": []
+        "espectadores": [],
+        "turno_actual": 0  # Inicia el Jugador 1
     }
     
     join_room(codigo)
@@ -95,6 +96,7 @@ def handle_unirse_sala(data):
             
             # El motor de tu V1 baraja y prepara las cartas
             partida["juego"].iniciar_partida()
+            partida["turno_actual"] = 0  # Nos aseguramos de que empiece el Jugador 1
             
             # Avisamos a toda la sala que la mesa está lista
             emit('partida_lista', {
@@ -114,7 +116,6 @@ def handle_unirse_sala(data):
                     mano_propia.insertar_final(carta_robada)
                     
                     # ✅ CAMBIO CLAVE: Mapeamos .valor (de tu constructor) al 'numero' que espera la web
-                    # Pasamos el palo a minúsculas (.lower()) para prevenir desajustes con las imágenes
                     cartas_serializadas.append({
                         'numero': carta_robada.valor,
                         'palo': str(carta_robada.palo).lower()
@@ -130,11 +131,52 @@ def handle_unirse_sala(data):
         
         emit('rol_asignado', {
             'mensaje': 'La mesa está llena. Entraste en modo Espectador en vivo.',
-            'rol': 'Espectador'
+            'rol': 'Escpectador'
         }, room=id_sesion)
         
         emit('actualizacion_espectadores', {'total': len(partida["espectadores"])}, room=codigo)
 
-if __name__ == '__main__':
-    # host='0.0.0.0' expone el servidor a los celulares y computadoras de tu Intranet
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+
+@socketio.on('tirar_carta')
+def handle_tirar_carta(data):
+    """
+    PRE: data contiene 'codigo' y un diccionario 'carta' con numero y palo.
+    POST: Valida si es el turno del jugador emisor. Si es correcto, transmite la jugada
+          y avanza cíclicamente el turno para 2, 4 o 6 jugadores.
+    """
+    codigo = data.get('codigo').upper()
+    carta = data.get('carta')
+    id_sesion = request.sid
+    
+    if codigo not in PARTIDAS:
+        return
+        
+    partida = PARTIDAS[codigo]
+    
+    # 1. Validar si el dispositivo que tira está sentado en la mesa
+    if id_sesion not in partida["jugadores"]:
+        emit('error', {'mensaje': 'Los espectadores no pueden jugar cartas.'})
+        return
+        
+    # 2. Obtener el índice del jugador actual y el índice de quién debería jugar
+    indice_jugador = partida["jugadores"].index(id_sesion)
+    indice_turno = partida["turno_actual"]
+    
+    # 3. ⚠️ VALIDACIÓN DE TURNO ESTRICTA
+    if indice_jugador != indice_turno:
+        emit('error', {'mensaje': 'No es tu turno de lanzar.'})
+        return
+        
+    # 4. Si el turno es correcto, procesamos la jugada
+    rol = f"Jugador {indice_jugador + 1}"
+    print(f"[{codigo}] {rol} jugó: {carta['numero']} de {carta['palo']}")
+    
+    # Retransmitimos la jugada a todos los de la sala
+    emit('carta_jugada', {
+        'rol': rol,
+        'carta': carta
+    }, room=codigo)
+    
+    # 5. 🔄 AVANCE CÍCLICO DEL TURNO (Aritmética modular para 2, 4 o 6 jugadores)
+    partida["turno_actual"] = (indice_turno + 1) % partida["max_jugadores"]
+    print(f"[{codigo}] Siguiente turno: Jugador {partida['turno_actual'] + 1}")
