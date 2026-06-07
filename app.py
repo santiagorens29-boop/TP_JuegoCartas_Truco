@@ -25,7 +25,6 @@ def index():
     return render_template('mesa.html')
 
 # --- EVENTOS DE WEBSOCKETS (Tiempo real) ---
-
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
@@ -40,7 +39,7 @@ def handle_crear_sala(data):
         emit('error', {'mensaje': 'Ese código de sala ya existe. Elegí otro.'})
         return
 
-    # Instanciamos el Truco de tu carpeta juegos [cite: 60]
+    # Instanciamos el Truco de tu carpeta juegos
     # Nota de escalabilidad para la V2 final: con un IF acá podés cambiar a Uno() o Poker() según el menú
     instancia_juego = Truco()
     
@@ -60,11 +59,13 @@ def handle_crear_sala(data):
         'max_jugadores': max_jugadores
     })
 
+    
 @socketio.on('unirse_sala')
 def handle_unirse_sala(data):
     """
     PRE: data contiene el 'codigo' al que se quiere unir el dispositivo.
-    POST: Clasifica automáticamente al ingresante como Jugador activo o Espectador.
+    POST: Clasifica al ingresante, inicializa el juego si se llena y reparte 
+          las cartas reales usando la ListaEnlazada a cada pantalla.
     """
     codigo = data.get('codigo').upper()
     id_sesion = request.sid
@@ -76,33 +77,53 @@ def handle_unirse_sala(data):
     partida = PARTIDAS[codigo]
     join_room(codigo)
     
-    # 1. Verificamos si todavía hay "sillas" libres para jugar
+    # 1. Si hay lugar en la mesa, se sienta a jugar
     if len(partida["jugadores"]) < partida["max_jugadores"]:
         partida["jugadores"].append(id_sesion)
         numero_jugador = len(partida["jugadores"])
         
         print(f"[NUEVO JUGADOR] Se unió a {codigo}: {id_sesion} como Jugador {numero_jugador}")
         
-        # Le avisamos de forma privada a este usuario qué número de jugador es
         emit('rol_asignado', {
             'mensaje': f'Te uniste como Jugador {numero_jugador}.',
             'rol': f'Jugador {numero_jugador}'
         }, room=id_sesion)
         
-        # Si la sala se llenó por completo con los jugadores requeridos, arranca la partida
+        # --- ¡MESA LLENA! COMENZAMOS EL REPARTO ---
         if len(partida["jugadores"]) == partida["max_jugadores"]:
             print(f"[PARTIDA LISTA] Sala {codigo} completa. Inicializando el mazo...")
             
-            # Inicializamos el motor del Truco (fabrica el mazo, asigna pesos y baraja)
+            # El motor de tu V1 baraja y prepara las cartas
             partida["juego"].iniciar_partida()
             
-            # Emitimos a TODA la sala que el juego comenzó
+            # Avisamos a toda la sala que la mesa está lista
             emit('partida_lista', {
-                'mensaje': '¡Mesa completa! Comienza la partida.',
+                'mensaje': '¡Mesa completa! Repartiendo cartas...',
                 'status': 'jugando'
             }, room=codigo)
             
-    # 2. Si las sillas de juego están llenas, entra directo como Espectador en vivo
+            # Repartimos 3 cartas reales a cada jugador de la lista
+            for jugador_id in partida["jugadores"]:
+                from tads.lista_enlazada import ListaEnlazada
+                mano_propia = ListaEnlazada()
+                cartas_serializadas = [] # Lista simple para mandarle al navegador web
+                
+                # Robamos las 3 cartas del mazo de la V1
+                for _ in range(partida["juego"].cartas_por_mano):
+                    carta_robada = partida["juego"].mazo.robar_carta()
+                    mano_propia.insertar_final(carta_robada)
+                    
+                    # ✅ CAMBIO CLAVE: Mapeamos .valor (de tu constructor) al 'numero' que espera la web
+                    # Pasamos el palo a minúsculas (.lower()) para prevenir desajustes con las imágenes
+                    cartas_serializadas.append({
+                        'numero': carta_robada.valor,
+                        'palo': str(carta_robada.palo).lower()
+                    })
+                
+                # Le enviamos de forma EXCLUSIVA y PRIVADA sus 3 cartas a este dispositivo
+                emit('recibir_cartas', {'cartas': cartas_serializadas}, room=jugador_id)
+                
+    # 2. Si las sillas de juego están llenas, entra directo como Espectador
     else:
         partida["espectadores"].append(id_sesion)
         print(f"[ESPECTADOR] {id_sesion} entró a mirar la sala {codigo}")
@@ -112,10 +133,7 @@ def handle_unirse_sala(data):
             'rol': 'Espectador'
         }, room=id_sesion)
         
-        # Avisamos a la sala que hay un nuevo mirón
-        emit('actualizacion_espectadores', {
-            'total': len(partida["espectadores"])
-        }, room=codigo)
+        emit('actualizacion_espectadores', {'total': len(partida["espectadores"])}, room=codigo)
 
 if __name__ == '__main__':
     # host='0.0.0.0' expone el servidor a los celulares y computadoras de tu Intranet

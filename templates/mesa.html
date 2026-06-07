@@ -47,7 +47,7 @@
         <div style="background-color: #2f3640; padding: 15px; border-radius: 10px;">
             <h4>Tus Cartas en Mano:</h4>
             <div id="mis-cartas-container" style="display: flex; justify-content: center; gap: 15px;">
-                </div>
+            </div>
         </div>
     </div>
 
@@ -64,11 +64,13 @@
         function crearMesa() {
             const codigo = document.getElementById('codigo-sala').value;
             const maxJugadores = document.getElementById('select-jugadores').value;
+            
 
             if(!codigo) { alert("Ingresá un código de sala."); return; }
 
             // Enviamos el evento al app.py en Python
             socket.emit('crear_sala', { codigo: codigo, max_jugadores: maxJugadores });
+            
         }
 
         function unirseAMesa() {
@@ -76,7 +78,6 @@
             if(!codigo) { alert("Ingresá un código de sala."); return; }
 
             // Por defecto intenta unirse a la silla disponible. 
-            // Si está llena, el backend de Python lo cambiará a Espectador automáticamente.
             socket.emit('unirse_sala', { codigo: codigo });
         }
 
@@ -87,8 +88,9 @@
             abrirMesaDeJuego(data.rol);
         });
 
-        socket.on('rol_assigned', (data) => {
-            abrirMesaDeJuego(data.role);
+        // ✅ CORREGIDO: Traducido de rol_assigned/data.role a estricto español para acoplar con tu app.py
+        socket.on('rol_asignado', (data) => {
+            abrirMesaDeJuego(data.rol);
             if(data.mensaje) { alert(data.mensaje); }
         });
 
@@ -109,6 +111,80 @@
             document.getElementById('info-sala').innerText = `SALA: ${codigo}`;
             document.getElementById('mi-rol').innerText = `Tu Rol actual: ${rolAsignado}`;
         }
+
+        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
+        socket.on('recibir_cartas', (data) => {
+            const contenedor = document.getElementById('mis-cartas-container');
+            contenedor.innerHTML = ""; // Limpiamos por si había algo antes
+
+            // Recorremos las 3 cartas que nos mandó el servidor
+            data.cartas.forEach((carta, indice) => {
+                // Creamos un botón HTML dinámicamente para cada carta
+                const botonCarta = document.createElement('button');
+                
+                // Texto que va a mostrar el botón (Ej: "7 de Espada")
+                botonCarta.innerText = `${carta.numero} de ${carta.palo}`;
+                
+                // Le damos un diseño prolijo de carta física con CSS directo
+                botonCarta.style.padding = "20px 15px";
+                botonCarta.style.fontSize = "16px";
+                botonCarta.style.fontWeight = "bold";
+                botonCarta.style.borderRadius = "8px";
+                botonCarta.style.border = "2px solid #fbc531";
+                botonCarta.style.backgroundColor = "#ffffff";
+                botonCarta.style.color = "#2c3e50";
+                botonCarta.style.cursor = "pointer";
+                botonCarta.style.boxShadow = "0 4px 6px rgba(0,0,0,0.3)";
+                
+                // Evento para cuando el jugador haga click en su carta para lanzarla a la mesa
+                botonCarta.onclick = () => {
+                    lanzarCarta(carta, indice);
+                    botonCarta.style.display = 'none'; // Desaparece de la mano al jugarla
+                };
+
+                // Metemos la carta dentro del contenedor visual de la pantalla
+                contenedor.appendChild(botonCarta);
+            });
+        });
+
+        function lanzarCarta(carta, indice) {
+            console.log(`Lanzaste: ${carta.numero} de ${carta.palo}`);
+            // El paso siguiente será avisarle a Python con un socket.emit que tiramos esta carta
+        }
+        
+        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
+        socket.on('recibir_cartas', (data) => {
+            const contenedor = document.getElementById('mis-cartas-container');
+            contenedor.innerHTML = ""; // Limpiamos el contenedor
+
+            // Recorremos las 3 cartas reales que nos mandó el servidor
+            data.cartas.forEach((carta, indice) => {
+                // Creamos un botón interactivo para cada carta
+                const botonCarta = document.createElement('button');
+                
+                // Texto provisorio para verificar qué carta es (Ej: "1 de espada")
+                botonCarta.innerText = `${carta.numero} de ${carta.palo}`;
+                
+                // Estilo visual básico de botón prolijo
+                botonCarta.style.padding = "15px 20px";
+                botonCarta.style.fontSize = "16px";
+                botonCarta.style.fontWeight = "bold";
+                botonCarta.style.borderRadius = "5px";
+                botonCarta.style.cursor = "pointer";
+                botonCarta.style.backgroundColor = "#ffffff";
+                botonCarta.style.color = "#000000";
+
+                // Guardamos la acción de clickear para cuando juguemos más adelante
+                botonCarta.onclick = () => {
+                    alert(`Hiciste click en: ${carta.numero} de ${carta.palo}`);
+                    botonCarta.style.display = 'none'; // Desaparece al usarla
+                };
+
+                // Metemos el botón adentro de la zona gris
+                contenedor.appendChild(botonCarta);
+            });
+        });
+
     </script>
 </body>
 </html>
