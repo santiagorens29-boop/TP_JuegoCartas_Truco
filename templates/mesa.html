@@ -153,38 +153,42 @@
         }
         
         // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
+        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
         socket.on('recibir_cartas', (data) => {
             const contenedor = document.getElementById('mis-cartas-container');
             contenedor.innerHTML = ""; // Limpiamos el contenedor
 
             // Recorremos las 3 cartas reales que nos mandó el servidor
             data.cartas.forEach((carta, indice) => {
-                // Creamos un botón interactivo para cada carta
-                const botonCarta = document.createElement('button');
+                // ✅ CAMBIO: En vez de un botón, creamos una etiqueta de imagen HTML
+                const imagenCarta = document.createElement('img');
                 
-                // Texto provisorio para verificar qué carta es (Ej: "1 de espada")
-                botonCarta.innerText = `${carta.numero} de ${carta.palo}`;
+                // Construimos la ruta dinámica apuntando a tu carpeta local
+                // Ejemplo resultante: "static/cartas/1_espada.png"
+                imagenCarta.src = `static/cartas/${carta.numero}_${carta.palo}.png`;
                 
-                // Estilo visual básico de botón prolijo
-                botonCarta.style.padding = "15px 20px";
-                botonCarta.style.fontSize = "16px";
-                botonCarta.style.fontWeight = "bold";
-                botonCarta.style.borderRadius = "5px";
-                botonCarta.style.cursor = "pointer";
-                botonCarta.style.backgroundColor = "#ffffff";
-                botonCarta.style.color = "#000000";
+                // Le damos un diseño y tamaño estético de carta física para la pantalla
+                imagenCarta.style.width = "100px";
+                imagenCarta.style.height = "auto";
+                imagenCarta.style.borderRadius = "8px";
+                imagenCarta.style.cursor = "pointer";
+                imagenCarta.style.boxShadow = "0 6px 10px rgba(0,0,0,0.4)";
+                imagenCarta.style.transition = "transform 0.2s";
+
+                // Efecto visual: cuando pasas el mouse por arriba, la carta se levanta un poquito
+                imagenCarta.onmouseover = () => { imagenCarta.style.transform = "scale(1.08)"; };
+                imagenCarta.onmouseout = () => { imagenCarta.style.transform = "scale(1)"; };
 
                 // Guardamos la acción de clickear para cuando juguemos más adelante
-                botonCarta.onclick = () => {
+                imagenCarta.onclick = () => {
                     alert(`Hiciste click en: ${carta.numero} de ${carta.palo}`);
-                    botonCarta.style.display = 'none'; // Desaparece al usarla
+                    imagenCarta.style.display = 'none'; // Desaparece de la mano al usarse
                 };
 
-                // Metemos el botón adentro de la zona gris
-                contenedor.appendChild(botonCarta);
+                // Metemos la imagen real adentro de la zona gris de tu mano
+                contenedor.appendChild(imagenCarta);
             });
         });
-
     </script>
 </body>
 </html>
