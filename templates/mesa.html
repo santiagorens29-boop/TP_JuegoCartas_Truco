@@ -41,7 +41,9 @@
         <div id="mi-rol" style="color: #00a8ff; font-weight: bold; margin-bottom: 20px;"></div>
 
         <div style="background-color: #0a4b2c; border: 2px dashed #fff; border-radius: 10px; height: 180px; margin: 20px 0; display: flex; align-items: center; justify-content: center;">
-            <p id="consola-mesa" style="color: #a4b0be; font-style: italic;">Esperando que los jugadores tiren sus cartas...</p>
+            <div id="consola-mesa" style="color: #a4b0be; font-style: italic; width: 90%;">
+                Esperando que los jugadores tiren sus cartas...
+            </div>
         </div>
 
         <div style="background-color: #2f3640; padding: 15px; border-radius: 10px;">
@@ -65,12 +67,10 @@
             const codigo = document.getElementById('codigo-sala').value;
             const maxJugadores = document.getElementById('select-jugadores').value;
             
-
             if(!codigo) { alert("Ingresá un código de sala."); return; }
 
             // Enviamos el evento al app.py en Python
             socket.emit('crear_sala', { codigo: codigo, max_jugadores: maxJugadores });
-            
         }
 
         function unirseAMesa() {
@@ -88,7 +88,6 @@
             abrirMesaDeJuego(data.rol);
         });
 
-        // ✅ CORREGIDO: Traducido de rol_assigned/data.role a estricto español para acoplar con tu app.py
         socket.on('rol_asignado', (data) => {
             abrirMesaDeJuego(data.rol);
             if(data.mensaje) { alert(data.mensaje); }
@@ -115,59 +114,14 @@
         // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
         socket.on('recibir_cartas', (data) => {
             const contenedor = document.getElementById('mis-cartas-container');
-            contenedor.innerHTML = ""; // Limpiamos por si había algo antes
-
-            // Recorremos las 3 cartas que nos mandó el servidor
-            data.cartas.forEach((carta, indice) => {
-                // Creamos un botón HTML dinámicamente para cada carta
-                const botonCarta = document.createElement('button');
-                
-                // Texto que va a mostrar el botón (Ej: "7 de Espada")
-                botonCarta.innerText = `${carta.numero} de ${carta.palo}`;
-                
-                // Le damos un diseño prolijo de carta física con CSS directo
-                botonCarta.style.padding = "20px 15px";
-                botonCarta.style.fontSize = "16px";
-                botonCarta.style.fontWeight = "bold";
-                botonCarta.style.borderRadius = "8px";
-                botonCarta.style.border = "2px solid #fbc531";
-                botonCarta.style.backgroundColor = "#ffffff";
-                botonCarta.style.color = "#2c3e50";
-                botonCarta.style.cursor = "pointer";
-                botonCarta.style.boxShadow = "0 4px 6px rgba(0,0,0,0.3)";
-                
-                // Evento para cuando el jugador haga click en su carta para lanzarla a la mesa
-                botonCarta.onclick = () => {
-                    lanzarCarta(carta, indice);
-                    botonCarta.style.display = 'none'; // Desaparece de la mano al jugarla
-                };
-
-                // Metemos la carta dentro del contenedor visual de la pantalla
-                contenedor.appendChild(botonCarta);
-            });
-        });
-
-        function lanzarCarta(carta, indice) {
-            console.log(`Lanzaste: ${carta.numero} de ${carta.palo}`);
-            // El paso siguiente será avisarle a Python con un socket.emit que tiramos esta carta
-        }
-        
-        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
-        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
-        socket.on('recibir_cartas', (data) => {
-            const contenedor = document.getElementById('mis-cartas-container');
             contenedor.innerHTML = ""; // Limpiamos el contenedor
 
-            // Recorremos las 3 cartas reales que nos mandó el servidor
             data.cartas.forEach((carta, indice) => {
-                // ✅ CAMBIO: En vez de un botón, creamos una etiqueta de imagen HTML
                 const imagenCarta = document.createElement('img');
                 
-                // Construimos la ruta dinámica apuntando a tu carpeta local
-                // Ejemplo resultante: "static/cartas/1_espada.png"
                 imagenCarta.src = `static/cartas/${carta.numero}_${carta.palo}.png`;
+                imagenCarta.id = `carta-${indice}`;
                 
-                // Le damos un diseño y tamaño estético de carta física para la pantalla
                 imagenCarta.style.width = "100px";
                 imagenCarta.style.height = "auto";
                 imagenCarta.style.borderRadius = "8px";
@@ -175,19 +129,50 @@
                 imagenCarta.style.boxShadow = "0 6px 10px rgba(0,0,0,0.4)";
                 imagenCarta.style.transition = "transform 0.2s";
 
-                // Efecto visual: cuando pasas el mouse por arriba, la carta se levanta un poquito
                 imagenCarta.onmouseover = () => { imagenCarta.style.transform = "scale(1.08)"; };
                 imagenCarta.onmouseout = () => { imagenCarta.style.transform = "scale(1)"; };
 
-                // Guardamos la acción de clickear para cuando juguemos más adelante
+                // El click ahora le avisa a Python para validar el turno de forma estricta
                 imagenCarta.onclick = () => {
-                    alert(`Hiciste click en: ${carta.numero} de ${carta.palo}`);
-                    imagenCarta.style.display = 'none'; // Desaparece de la mano al usarse
+                    const codigo = document.getElementById('codigo-sala').value.toUpperCase();
+                    socket.emit('tirar_carta', {
+                        codigo: codigo,
+                        carta: carta
+                    });
                 };
 
-                // Metemos la imagen real adentro de la zona gris de tu mano
                 contenedor.appendChild(imagenCarta);
             });
+        });
+
+        // --- EVENTO: ALGUIEN TIRÓ UNA CARTA A LA MESA ---
+        socket.on('carta_jugada', (data) => {
+            const consola = document.getElementById('consola-mesa');
+            
+            if (consola.innerText.includes("Esperando") || consola.innerText.includes("repartidor")) {
+                consola.innerText = "";
+            }
+            
+            // Creamos el texto de la jugada en la consola central
+            const textoJugada = document.createElement('p');
+            textoJugada.innerText = `${data.rol} jugó: ${data.carta.numero} de ${data.carta.palo}`;
+            textoJugada.style.margin = "5px 0";
+            textoJugada.style.fontWeight = "bold";
+            textoJugada.style.color = "#fbc531";
+            
+            consola.appendChild(textoJugada);
+
+            // Si fui yo el que tiró, la elimino visualmente de mi mano
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (miRolActual.includes(data.rol)) {
+                const imagenes = document.getElementById('mis-cartas-container').getElementsByTagName('img');
+                for (let img of imagenes) {
+                    if (img.src.includes(`${data.carta.numero}_${data.carta.palo}.png`) && img.style.display !== 'none') {
+                        img.style.display = 'none';
+                        break;
+                    }
+                }
+            }
         });
     </script>
 </body>
