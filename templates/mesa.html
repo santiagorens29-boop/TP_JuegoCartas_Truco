@@ -40,8 +40,8 @@
         <div id="info-sala" style="font-weight: bold; margin-bottom: 10px;"></div>
         <div id="mi-rol" style="color: #00a8ff; font-weight: bold; margin-bottom: 20px;"></div>
 
-        <div style="background-color: #0a4b2c; border: 2px dashed #fff; border-radius: 10px; height: 180px; margin: 20px 0; display: flex; align-items: center; justify-content: center;">
-            <div id="consola-mesa" style="color: #a4b0be; font-style: italic; width: 90%;">
+        <div style="background-color: #0a4b2c; border: 2px dashed #fff; border-radius: 10px; min-height: 180px; margin: 20px 0; display: flex; align-items: center; justify-content: center; padding: 10px;">
+            <div id="consola-mesa" style="color: #a4b0be; font-style: italic; width: 95%; display: flex; justify-content: center; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
                 Esperando que los jugadores tiren sus cartas...
             </div>
         </div>
@@ -56,7 +56,6 @@
     <script>
         const socket = io();
 
-        // Al conectarse de forma exitosa a la IP de la PC Servidor
         socket.on('connect', () => {
             const estado = document.getElementById('estado-conexion');
             estado.innerText = "Conectado al Servidor Central (Intranet)";
@@ -66,22 +65,15 @@
         function crearMesa() {
             const codigo = document.getElementById('codigo-sala').value;
             const maxJugadores = document.getElementById('select-jugadores').value;
-            
             if(!codigo) { alert("Ingresá un código de sala."); return; }
-
-            // Enviamos el evento al app.py en Python
             socket.emit('crear_sala', { codigo: codigo, max_jugadores: maxJugadores });
         }
 
         function unirseAMesa() {
             const codigo = document.getElementById('codigo-sala').value;
             if(!codigo) { alert("Ingresá un código de sala."); return; }
-
-            // Por defecto intenta unirse a la silla disponible. 
             socket.emit('unirse_sala', { codigo: codigo });
         }
-
-        // --- RESPUESTAS DESDE PYTHON EN TIEMPO REAL ---
 
         socket.on('sala_creada', (data) => {
             alert(data.mensaje);
@@ -95,7 +87,7 @@
 
         socket.on('partida_lista', (data) => {
             alert(data.mensaje);
-            document.getElementById('consola-mesa').innerText = "¡La partida comenzó! El repartidor está distribuyendo las cartas...";
+            document.getElementById('consola-mesa').innerText = "¡La partida comenzó! El mazo está listo. Turno del Jugador 1...";
         });
 
         socket.on('error', (data) => {
@@ -106,19 +98,16 @@
             const codigo = document.getElementById('codigo-sala').value.toUpperCase();
             document.getElementById('pantalla-lobby').style.display = 'none';
             document.getElementById('pantalla-juego').style.display = 'block';
-            
             document.getElementById('info-sala').innerText = `SALA: ${codigo}`;
             document.getElementById('mi-rol').innerText = `Tu Rol actual: ${rolAsignado}`;
         }
 
-        // --- EVENTO: RECIBIR CARTAS DESDE PYTHON ---
         socket.on('recibir_cartas', (data) => {
             const contenedor = document.getElementById('mis-cartas-container');
-            contenedor.innerHTML = ""; // Limpiamos el contenedor
+            contenedor.innerHTML = ""; 
 
             data.cartas.forEach((carta, indice) => {
                 const imagenCarta = document.createElement('img');
-                
                 imagenCarta.src = `static/cartas/${carta.numero}_${carta.palo}.png`;
                 imagenCarta.id = `carta-${indice}`;
                 
@@ -132,7 +121,6 @@
                 imagenCarta.onmouseover = () => { imagenCarta.style.transform = "scale(1.08)"; };
                 imagenCarta.onmouseout = () => { imagenCarta.style.transform = "scale(1)"; };
 
-                // El click ahora le avisa a Python para validar el turno de forma estricta
                 imagenCarta.onclick = () => {
                     const codigo = document.getElementById('codigo-sala').value.toUpperCase();
                     socket.emit('tirar_carta', {
@@ -140,29 +128,48 @@
                         carta: carta
                     });
                 };
-
                 contenedor.appendChild(imagenCarta);
             });
         });
 
-        // --- EVENTO: ALGUIEN TIRÓ UNA CARTA A LA MESA ---
+        // ✅ MODIFICADO: Renderizado gráfico dinámico en el centro de la mesa
         socket.on('carta_jugada', (data) => {
             const consola = document.getElementById('consola-mesa');
             
-            if (consola.innerText.includes("Esperando") || consola.innerText.includes("repartidor")) {
+            // Limpiamos los textos descriptivos iniciales para dar paso a las imágenes
+            if (consola.innerText.includes("Esperando") || consola.innerText.includes("comenzó")) {
                 consola.innerText = "";
             }
             
-            // Creamos el texto de la jugada en la consola central
-            const textoJugada = document.createElement('p');
-            textoJugada.innerText = `${data.rol} jugó: ${data.carta.numero} de ${data.carta.palo}`;
-            textoJugada.style.margin = "5px 0";
-            textoJugada.style.fontWeight = "bold";
-            textoJugada.style.color = "#fbc531";
-            
-            consola.appendChild(textoJugada);
+            // 1. Creamos el contenedor individual de la jugada
+            const bloqueCarta = document.createElement('div');
+            bloqueCarta.style.display = "flex";
+            bloqueCarta.style.flexDirection = "column";
+            bloqueCarta.style.alignItems = "center";
+            bloqueCarta.style.gap = "5px";
 
-            // Si fui yo el que tiró, la elimino visualmente de mi mano
+            // 2. Etiqueta con el nombre del rol arriba
+            const etiquetaRol = document.createElement('p');
+            etiquetaRol.innerText = data.rol;
+            etiquetaRol.style.margin = "0";
+            etiquetaRol.style.fontSize = "14px";
+            etiquetaRol.style.fontWeight = "bold";
+            etiquetaRol.style.color = "#fbc531";
+
+            // 3. Imagen física de la carta abajo
+            const imgNaipe = document.createElement('img');
+            imgNaipe.src = `static/cartas/${data.carta.numero}_${data.carta.palo}.png`;
+            imgNaipe.style.width = "80px";
+            imgNaipe.style.height = "auto";
+            imgNaipe.style.borderRadius = "6px";
+            imgNaipe.style.boxShadow = "0 4px 8px rgba(0,0,0,0.5)";
+
+            // Ensamblamos el bloque y lo metemos al tapete
+            bloqueCarta.appendChild(etiquetaRol);
+            bloqueCarta.appendChild(imgNaipe);
+            consola.appendChild(bloqueCarta);
+
+            // 4. Si fui yo el emisor, la elimino de mi contenedor inferior
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes(data.rol)) {
                 const imagenes = document.getElementById('mis-cartas-container').getElementsByTagName('img');
