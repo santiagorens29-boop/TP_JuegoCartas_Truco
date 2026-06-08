@@ -15,7 +15,8 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 #       "max_jugadores": 2, (o 4, o 6)
 #       "jugadores": [id_sesion1, id_sesion2, ...],
 #       "espectadores": [id_sesion3, ...],
-#       "turno_actual": 0  # 💡 Índice del jugador que tiene el permiso de lanzar
+#       "turno_actual": 0,
+#       "historial_mesa": []  # 💡 Lista para contar cuántas cartas cayeron en la mano actual
 #   }
 # }
 PARTIDAS = {}
@@ -48,7 +49,8 @@ def handle_crear_sala(data):
         "max_jugadores": max_jugadores,
         "jugadores": [id_sesion], # El creador es el primer jugador
         "espectadores": [],
-        "turno_actual": 0  # Inicia el Jugador 1
+        "turno_actual": 0,  # Inicia el Jugador 1
+        "historial_mesa": []  # Inicia vacío
     }
     
     join_room(codigo)
@@ -97,6 +99,7 @@ def handle_unirse_sala(data):
             # El motor de tu V1 baraja y prepara las cartas
             partida["juego"].iniciar_partida()
             partida["turno_actual"] = 0  # Nos aseguramos de que empiece el Jugador 1
+            partida["historial_mesa"] = [] # Limpiamos mesa
             
             # Avisamos a toda la sala que la mesa está lista
             emit('partida_lista', {
@@ -115,7 +118,7 @@ def handle_unirse_sala(data):
                     carta_robada = partida["juego"].mazo.robar_carta()
                     mano_propia.insertar_final(carta_robada)
                     
-                    # ✅ CAMBIO CLAVE: Mapeamos .valor (de tu constructor) al 'numero' que espera la web
+                    # Mapeamos .valor al 'numero' que espera la web
                     cartas_serializadas.append({
                         'numero': carta_robada.valor,
                         'palo': str(carta_robada.palo).lower()
@@ -131,7 +134,7 @@ def handle_unirse_sala(data):
         
         emit('rol_asignado', {
             'mensaje': 'La mesa está llena. Entraste en modo Espectador en vivo.',
-            'rol': 'Escpectador'
+            'rol': 'Espectador'
         }, room=id_sesion)
         
         emit('actualizacion_espectadores', {'total': len(partida["espectadores"])}, room=codigo)
@@ -141,8 +144,8 @@ def handle_unirse_sala(data):
 def handle_tirar_carta(data):
     """
     PRE: data contiene 'codigo' y un diccionario 'carta' con numero y palo.
-    POST: Valida si es el turno del jugador emisor. Si es correcto, transmite la jugada
-          y avanza cíclicamente el turno para 2, 4 o 6 jugadores.
+    POST: Valida si es el turno del jugador emisor. Si es correcto, calcula la ronda actual
+          matemáticamente, transmite la jugada estructurada y avanza el turno.
     """
     codigo = data.get('codigo').upper()
     carta = data.get('carta')
@@ -167,16 +170,22 @@ def handle_tirar_carta(data):
         emit('error', {'mensaje': 'No es tu turno de lanzar.'})
         return
         
-    # 4. Si el turno es correcto, procesamos la jugada
-    rol = f"Jugador {indice_jugador + 1}"
-    print(f"[{codigo}] {rol} jugó: {carta['numero']} de {carta['palo']}")
+    # 4. 🧮 CALCULAR RONDA ACTUAL (División entera basada en cartas jugadas)
+    cartas_ya_tiradas = len(partida["historial_mesa"])
+    ronda_deducida = (cartas_ya_tiradas // partida["max_jugadores"]) + 1
     
-    # Retransmitimos la jugada a todos los de la sala
+    # Registramos la carta en el historial para la próxima tirada
+    partida["historial_mesa"].append({'jugador': id_sesion, 'carta': carta})
+    
+    rol = f"Jugador {indice_jugador + 1}"
+    print(f"[{codigo}] {rol} jugó en Ronda {ronda_deducida}: {carta['numero']} de {carta['palo']}")
+    
+    # ✅ RETRANSMISIÓN ENRIQUECIDA: Ahora incluimos el número de ronda calculado
     emit('carta_jugada', {
         'rol': rol,
-        'carta': carta
+        'carta': carta,
+        'ronda': ronda_deducida
     }, room=codigo)
     
-    # 5. 🔄 AVANCE CÍCLICO DEL TURNO (Aritmética modular para 2, 4 o 6 jugadores)
+    # 5. 🔄 AVANCE CÍCLICO DEL TURNO
     partida["turno_actual"] = (indice_turno + 1) % partida["max_jugadores"]
-    print(f"[{codigo}] Siguiente turno: Jugador {partida['turno_actual'] + 1}")

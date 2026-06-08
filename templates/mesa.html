@@ -34,16 +34,23 @@
         </button>
     </div>
 
-    <div id="pantalla-juego" style="display: none; max-width: 800px; margin: 0 auto; background-color: #0c5c36; border: 8px solid #8c52ff; border-radius: 15px; padding: 20px; min-height: 400px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8);">
+    <div id="pantalla-juego" style="display: none; max-width: 800px; margin: 0 auto; background-color: #0c5c36; border: 8px solid #8c52ff; border-radius: 15px; padding: 20px; min-height: 430px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8);">
         
         <h2 style="color: #fbc531;">Mesa de Juego Activa</h2>
         <div id="info-sala" style="font-weight: bold; margin-bottom: 10px;"></div>
         <div id="mi-rol" style="color: #00a8ff; font-weight: bold; margin-bottom: 20px;"></div>
 
-        <div style="background-color: #0a4b2c; border: 2px dashed #fff; border-radius: 10px; min-height: 180px; margin: 20px 0; display: flex; align-items: center; justify-content: center; padding: 10px;">
-            <div id="consola-mesa" style="color: #a4b0be; font-style: italic; width: 95%; display: flex; justify-content: center; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
+        <div style="background-color: #0a4b2c; border: 2px dashed #fff; border-radius: 10px; min-height: 240px; margin: 20px 0; display: grid; grid-template-columns: repeat(3, 1fr); padding: 15px; gap: 15px; position: relative;">
+            
+            <p id="texto-espera" style="color: #a4b0be; font-style: italic; position: absolute; width: 100%; top: 40%; margin: 0; left: 0; pointer-events: none;">
                 Esperando que los jugadores tiren sus cartas...
-            </div>
+            </p>
+
+            <div id="ronda-1" style="display: flex; flex-direction: column-reverse; align-items: center; gap: 15px; justify-content: flex-end; border-right: 1px dashed rgba(255,255,255,0.2); padding-right: 5px;"></div>
+            
+            <div id="ronda-2" style="display: flex; flex-direction: column-reverse; align-items: center; gap: 15px; justify-content: flex-end; border-right: 1px dashed rgba(255,255,255,0.2); padding-right: 5px;"></div>
+            
+            <div id="ronda-3" style="display: flex; flex-direction: column-reverse; align-items: center; gap: 15px; justify-content: flex-end;"></div>
         </div>
 
         <div style="background-color: #2f3640; padding: 15px; border-radius: 10px;">
@@ -87,7 +94,7 @@
 
         socket.on('partida_lista', (data) => {
             alert(data.mensaje);
-            document.getElementById('consola-mesa').innerText = "¡La partida comenzó! El mazo está listo. Turno del Jugador 1...";
+            document.getElementById('texto-espera').innerText = "¡La partida comenzó! Turno del Jugador 1...";
         });
 
         socket.on('error', (data) => {
@@ -132,44 +139,54 @@
             });
         });
 
-        // ✅ MODIFICADO: Renderizado gráfico dinámico en el centro de la mesa
+        // ✅ MODIFICADO: Distribución inteligente de cartas según la ronda calculada por Python
         socket.on('carta_jugada', (data) => {
-            const consola = document.getElementById('consola-mesa');
+            // Ocultamos el cartel flotante descriptivo si sigue visible
+            const textoEspera = document.getElementById('texto-espera');
+            if (textoEspera) { textoEspera.style.display = "none"; }
             
-            // Limpiamos los textos descriptivos iniciales para dar paso a las imágenes
-            if (consola.innerText.includes("Esperando") || consola.innerText.includes("comenzó")) {
-                consola.innerText = "";
-            }
-            
-            // 1. Creamos el contenedor individual de la jugada
+            // 1. Buscamos la columna de la ronda correspondiente (ronda-1, ronda-2 o ronda-3)
+            const columnaRonda = document.getElementById(`ronda-${data.ronda}`);
+            if (!columnaRonda) return;
+
+            // 2. Creamos el contenedor vertical de la jugada
             const bloqueCarta = document.createElement('div');
             bloqueCarta.style.display = "flex";
             bloqueCarta.style.flexDirection = "column";
             bloqueCarta.style.alignItems = "center";
-            bloqueCarta.style.gap = "5px";
+            bloqueCarta.style.gap = "3px";
 
-            // 2. Etiqueta con el nombre del rol arriba
+            // 3. Etiqueta con el rol
             const etiquetaRol = document.createElement('p');
             etiquetaRol.innerText = data.rol;
             etiquetaRol.style.margin = "0";
-            etiquetaRol.style.fontSize = "14px";
+            etiquetaRol.style.fontSize = "12px";
             etiquetaRol.style.fontWeight = "bold";
             etiquetaRol.style.color = "#fbc531";
 
-            // 3. Imagen física de la carta abajo
+            // 4. Imagen física de la carta
             const imgNaipe = document.createElement('img');
             imgNaipe.src = `static/cartas/${data.carta.numero}_${data.carta.palo}.png`;
-            imgNaipe.style.width = "80px";
+            imgNaipe.style.width = "75px";
             imgNaipe.style.height = "auto";
-            imgNaipe.style.borderRadius = "6px";
+            imgNaipe.style.borderRadius = "5px";
             imgNaipe.style.boxShadow = "0 4px 8px rgba(0,0,0,0.5)";
 
-            // Ensamblamos el bloque y lo metemos al tapete
             bloqueCarta.appendChild(etiquetaRol);
             bloqueCarta.appendChild(imgNaipe);
-            consola.appendChild(bloqueCarta);
 
-            // 4. Si fui yo el emisor, la elimino de mi contenedor inferior
+            // 💡 DETALLE DE ORIENTACIÓN EXTRA:
+            // Si la carta la juega un rol par (Jugador 2, 4, 6) le metemos un margen abajo para separarla visualmente
+            // de la carta del Jugador 1, 3, 5 que va a caer abajo en la misma columna.
+            const numeroRol = parseInt(data.rol.replace("Jugador ", ""));
+            if (numeroRol % 2 === 0) {
+                bloqueCarta.style.marginBottom = "20px";
+            }
+
+            // Metemos el bloque adentro de la columna de la ronda actual
+            columnaRonda.appendChild(bloqueCarta);
+
+            // 5. Si fui yo el emisor, la elimino de mi contenedor inferior
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes(data.rol)) {
                 const imagenes = document.getElementById('mis-cartas-container').getElementsByTagName('img');
