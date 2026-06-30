@@ -16,7 +16,12 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 #       "jugadores": [id_sesion1, id_sesion2, ...],
 #       "espectadores": [id_sesion3, ...],
 #       "turno_actual": 0,
-#       "historial_mesa": []  # 💡 Lista para contar cuántas cartas cayeron en la mano actual
+#       "historial_mesa": [],
+#       "fase_envido": "disponible",       # disponible, cantado, o terminada
+#       "envido_acumulado": 0,             # Cuenta de los puntos en juego
+#       "jugador_grito_envido": None,      # Quién cantó originalmente
+#       "respuestas_envido_recibidas": {}, # Registra los tantos o "son buenas"
+#       "manos_internas": {}               # Almacena los objetos Carta reales de cada sid
 #   }
 # }
 PARTIDAS = {}
@@ -50,7 +55,12 @@ def handle_crear_sala(data):
         "jugadores": [id_sesion], # El creador es el primer jugador
         "espectadores": [],
         "turno_actual": 0,  # Inicia el Jugador 1
-        "historial_mesa": []  # Inicia vacío
+        "historial_mesa": [],  # Inicia vacío
+        "fase_envido": "disponible",
+        "envido_acumulado": 0,
+        "jugador_grito_envido": None,
+        "respuestas_envido_recibidas": {},
+        "manos_internas": {}
     }
     
     join_room(codigo)
@@ -100,6 +110,11 @@ def handle_unirse_sala(data):
             partida["juego"].iniciar_partida()
             partida["turno_actual"] = 0  # Nos aseguramos de que empiece el Jugador 1
             partida["historial_mesa"] = [] # Limpiamos mesa
+            partida["fase_envido"] = "disponible"
+            partida["envido_acumulado"] = 0
+            partida["jugador_grito_envido"] = None
+            partida["respuestas_envido_recibidas"] = {}
+            partida["manos_internas"] = {}
             
             # Avisamos a toda la sala que la mesa está lista
             emit('partida_lista', {
@@ -123,6 +138,9 @@ def handle_unirse_sala(data):
                         'numero': carta_robada.valor,
                         'palo': str(carta_robada.palo).lower()
                     })
+                
+                # Guardamos los objetos Carta completos en el servidor para cálculos de tantos
+                partida["manos_internas"][jugador_id] = mano_propia
                 
                 # Le enviamos de forma EXCLUSIVA y PRIVADA sus 3 cartas a este dispositivo
                 emit('recibir_cartas', {'cartas': cartas_serializadas}, room=jugador_id)
@@ -156,41 +174,77 @@ def handle_tirar_carta(data):
         
     partida = PARTIDAS[codigo]
     
-    # 1. Validar si el dispositivo que tira está sentado en la mesa
+    # Si hay un envido cantado y sin resolver, congelamos el tiro de cartas
+    if partida["fase_envido"] == "cantado":
+        emit('error', {'mensaje': 'Hay una apuesta de tantos activa. Deben responder primero.'})
+        return
+    
     if id_sesion not in partida["jugadores"]:
         emit('error', {'mensaje': 'Los espectadores no pueden jugar cartas.'})
         return
         
-    # 2. Obtener el índice del jugador actual y el índice de quién debería jugar
     indice_jugador = partida["jugadores"].index(id_sesion)
     indice_turno = partida["turno_actual"]
     
-    # 3. ⚠️ VALIDACIÓN DE TURNO ESTRICTA
     if indice_jugador != indice_turno:
         emit('error', {'mensaje': 'No es tu turno de lanzar.'})
         return
         
-    # 4. 🧮 CALCULAR RONDA ACTUAL (División entera basada en cartas jugadas)
     cartas_ya_tiradas = len(partida["historial_mesa"])
     ronda_deducida = (cartas_ya_tiradas // partida["max_jugadores"]) + 1
     
-    # Registramos la carta en el historial para la próxima tirada
     partida["historial_mesa"].append({'jugador': id_sesion, 'carta': carta})
     
     rol = f"Jugador {indice_jugador + 1}"
     print(f"[{codigo}] {rol} jugó en Ronda {ronda_deducida}: {carta['numero']} de {carta['palo']}")
     
-    # ✅ RETRANSMISIÓN ENRIQUECIDA: Ahora incluimos el número de ronda calculado
     emit('carta_jugada', {
         'rol': rol,
         'carta': carta,
         'ronda': ronda_deducida
     }, room=codigo)
     
-    # 5. 🔄 AVANCE CÍCLICO DEL TURNO
     partida["turno_actual"] = (indice_turno + 1) % partida["max_jugadores"]
 
 
+@socketio.on('cantar_envido')
+def handle_cantar_envido(data):
+    """
+    PRE: data contiene 'codigo' y el 'tipo' de tanto (envido, real_envido, falta_envido).
+    POST: Valida que estemos en ronda 1 y establece el estado de la mesa en pausa por tantos.
+    """
+    codigo = data.get('codigo').upper()
+    tipo = data.get('tipo')
+    id_sesion = request.sid
+    
+    if codigo not in PARTIDAS:
+        return
+        
+    partida = PARTIDAS[codigo]
+    
+    # Validación: Solo se puede gritar tantos si está disponible (Ronda 1 antes del pase)
+    cartas_ya_tiradas = len(partida["historial_mesa"])
+    ronda_actual = (cartas_ya_tiradas // partida["max_jugadores"]) + 1
+    
+    if ronda_actual > 1 or partida["fase_envido"] == "terminada":
+        emit('error', {'mensaje': 'El envido solo se puede cantar en la primera ronda.'})
+        return
+        
+    indice_jugador = partida["jugadores"].index(id_sesion)
+    rol = f"Jugador {indice_jugador + 1}"
+    
+    partida["fase_envido"] = "cantado"
+    partida["jugador_grito_envido"] = id_sesion
+    
+    print(f"[{codigo}] {rol} gritó: {tipo.upper()}")
+    
+    # Retransmitimos el grito para pausar las pantallas y activar los botones de respuesta
+    emit('envido_gritado', {
+        'rol': rol,
+        'tipo': tipo,
+        'id_emisor': id_sesion
+    }, room=codigo)
+
+
 if __name__ == '__main__':
-    # Al poner host='0.0.0.0' acá, habilitás la red local de forma fija
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
