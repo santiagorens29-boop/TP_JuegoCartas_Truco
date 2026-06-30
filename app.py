@@ -189,3 +189,8 @@ def handle_tirar_carta(data):
     
     # 5. 🔄 AVANCE CÍCLICO DEL TURNO
     partida["turno_actual"] = (indice_turno + 1) % partida["max_jugadores"]
+
+
+if __name__ == '__main__':
+    # Al poner host='0.0.0.0' acá, habilitás la red local de forma fija
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
