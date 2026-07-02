@@ -66,6 +66,25 @@
                 </button>
             </div>
 
+            <!-- ✅ NUEVO (DETALLE 2): Panel visual de respuestas para el rival ante apuestas de tantos -->
+            <div id="botonera-respuesta-envido" style="margin-bottom: 15px; display: none; justify-content: center; gap: 10px; background-color: #1e272e; padding: 10px; border-radius: 8px; border: 2px solid #8c52ff;">
+                <button onclick="responderTantos('quiero')" style="padding: 10px 15px; background-color: #4cd137; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🟢 Quiero
+                </button>
+                <button onclick="responderTantos('no_quiero')" style="padding: 10px 15px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🔴 No Quiero
+                </button>
+                <button id="btn-revire-envido" onclick="responderTantos('envido')" style="padding: 10px 15px; background-color: #fbc531; color: black; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🔄 Envido
+                </button>
+                <button id="btn-revire-real" onclick="responderTantos('real_envido')" style="padding: 10px 15px; background-color: #e67e22; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🔥 Real Envido
+                </button>
+                <button id="btn-revire-falta" onclick="responderTantos('falta_envido')" style="padding: 10px 15px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🚨 Falta Envido
+                </button>
+            </div>
+
             <h4>Tus Cartas en Mano:</h4>
             <div id="mis-cartas-container" style="display: flex; justify-content: center; gap: 15px;">
             </div>
@@ -171,7 +190,6 @@
         });
 
         socket.on('carta_jugada', (data) => {
-            // ✅ CORREGIDO: Ocultamiento inmediato e individual si tiré mi carta en Ronda 1
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (data.ronda === 1 && miRolActual.includes(data.rol)) {
                 document.getElementById('botonera-envido').style.display = 'none';
@@ -233,6 +251,15 @@
             socket.emit('cantar_envido', {
                 codigo: codigo,
                 tipo: tipoGrito
+            });
+        }
+
+        // ✅ NUEVO (DETALLE 2): Función provisional para despachar la respuesta seleccionada hacia el servidor
+        function responderTantos(decision) {
+            const codigo = document.getElementById('codigo-sala').value.toUpperCase();
+            socket.emit('responder_envido', {
+                codigo: codigo,
+                decision: decision
             });
         }
     </script>
