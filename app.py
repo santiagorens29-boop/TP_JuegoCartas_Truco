@@ -35,7 +35,7 @@ def index():
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
-    PRE: data contains 'codigo' (string) and 'max_jugadores' (int: 2, 4 o 6).
+    PRE: data contiene 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
     POST: Registra la partida en el diccionario global y asigna al creador como Jugador 1.
     """
     codigo = data.get('codigo').upper() # Pasamos a mayúsculas para evitar errores de tipeo
@@ -97,7 +97,8 @@ def handle_unirse_sala(data):
         
         print(f"[NUEVO JUGADOR] Se unió a {codigo}: {id_sesion} como Jugador {numero_jugador}")
         
-        emit('rol_assigned', {
+        # ✅ CORREGIDO: Volvemos al nombre de evento correcto 'rol_asignado'
+        emit('rol_asignado', {
             'mensaje': f'Te uniste como Jugador {numero_jugador}.',
             'rol': f'Jugador {numero_jugador}'
         }, room=id_sesion)
@@ -143,7 +144,6 @@ def handle_unirse_sala(data):
                 partida["manos_internas"][jugador_id] = mano_propia
                 
                 # Le enviamos de forma EXCLUSIVA y PRIVADA sus 3 cartas a este dispositivo
-                # ✅ MODIFICADO: Agregamos total_jugadores real del backend
                 emit('recibir_cartas', {
                     'cartas': cartas_serializadas,
                     'total_jugadores': partida["max_jugadores"]
@@ -214,7 +214,7 @@ def handle_tirar_carta(data):
 @socketio.on('cantar_envido')
 def handle_cantar_envido(data):
     """
-    PRE: data contiene 'codigo' y el 'tipo' de tanto (envido, real_envido, falta_envido).
+    PRE: data contiene 'codigo' and el 'tipo' de tanto (envido, real_envido, falta_envido).
     POST: Valida que estemos en ronda 1 y establece el estado de la mesa en pausa por tantos.
     """
     codigo = data.get('codigo').upper()
