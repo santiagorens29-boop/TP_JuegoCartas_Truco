@@ -125,14 +125,13 @@
             const contenedor = document.getElementById('mis-cartas-container');
             contenedor.innerHTML = ""; 
 
-            // ✅ CORREGIDO (DETALLE 1): Leemos los jugadores directamente desde la sincronización de Python
             const miRolActual = document.getElementById('mi-rol').innerText; 
             const totalJugadores = parseInt(data.total_jugadores);
             const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
 
             let puedeCantar = false;
             if (totalJugadores === 2) {
-                puedeCantar = true; // En 1 vs 1 cantan ambos sin restricciones
+                puedeCantar = true;
             } else if (totalJugadores === 4) {
                 if (miNumeroJugador === 3 || miNumeroJugador === 4) puedeCantar = true;
             } else if (totalJugadores === 6) {
@@ -172,6 +171,12 @@
         });
 
         socket.on('carta_jugada', (data) => {
+            // ✅ CORREGIDO: Ocultamiento inmediato e individual si tiré mi carta en Ronda 1
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (data.ronda === 1 && miRolActual.includes(data.rol)) {
+                document.getElementById('botonera-envido').style.display = 'none';
+            }
+            
             if (data.ronda > 1) {
                 document.getElementById('botonera-envido').style.display = 'none';
             }
@@ -212,7 +217,6 @@
 
             columnaRonda.appendChild(bloqueCarta);
 
-            const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes(data.rol)) {
                 const imagenes = document.getElementById('mis-cartas-container').getElementsByTagName('img');
                 for (let img of imagenes) {
