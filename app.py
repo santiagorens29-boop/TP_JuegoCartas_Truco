@@ -98,7 +98,8 @@ def handle_unirse_sala(data):
         
         print(f"[NUEVO JUGADOR] Se unió a {codigo}: {id_sesion} como Jugador {numero_jugador}")
         
-        emit('rol_assigned', {
+        # ✅ REPARADO: Volvemos al nombre correcto 'rol_asignado' en español
+        emit('rol_asignado', {
             'mensaje': f'Te uniste como Jugador {numero_jugador}.',
             'rol': f'Jugador {numero_jugador}'
         }, room=id_sesion)
@@ -155,7 +156,8 @@ def handle_unirse_sala(data):
         partida["espectadores"].append(id_sesion)
         print(f"[ESPECTADOR] {id_sesion} entró a mirar la sala {codigo}")
         
-        emit('rol_assigned', {
+        # ✅ REPARADO: Nombre correcto en español
+        emit('rol_asignado', {
             'mensaje': 'La mesa está llena. Entraste en modo Espectador en vivo.',
             'rol': 'Espectador'
         }, room=id_sesion)
@@ -166,9 +168,9 @@ def handle_unirse_sala(data):
 @socketio.on('tirar_carta')
 def handle_tirar_carta(data):
     """
-    PRE: data contiene 'codigo' y un diccionario 'carta' con numero y palo.
+    PRE: data contains 'codigo' y un diccionario 'carta' con numero y palo.
     POST: Valida si es el turno del jugador emisor. Si es correcto, calcula la ronda actual
-          matemáticamente, transmits la jugada estructurada y avanza el turno.
+          matemáticamente, transmite la jugada estructurada y avanza el turno.
     """
     codigo = data.get('codigo').upper()
     carta = data.get('carta')
@@ -283,7 +285,6 @@ def handle_cantar_envido(data):
     }, room=codigo)
 
 
-# ✅ NUEVO (DETALLE 2): Controlador del Ping-Pong infinito de respuestas por equipos
 @socketio.on('responder_envido')
 def handle_responder_envido(data):
     """
@@ -309,9 +310,8 @@ def handle_responder_envido(data):
     # 1. CASO DE REVIRE: La pelota va de vuelta al otro equipo
     if decision in ['envido', 'real_envido', 'falta_envido']:
         partida["historial_gritos_envido"].append(decision)
-        partida["jugador_grito_envido"] = id_sesion # Actualizamos el último emisor
+        partida["jugador_grito_envido"] = id_sesion
         
-        # Árbol de opciones estrictas para la contra-respuesta
         opciones_validas = {
             'quiero': True,
             'no_quiero': True,
@@ -329,13 +329,11 @@ def handle_responder_envido(data):
         elif decision == 'envido' and cantidades_envido == 2:
             opciones_validas['real_envido'] = not contiene_real
         elif decision == 'real_envido':
-            # Bloqueado revirar con otro Real Envido o Envido simple
             opciones_validas['envido'] = False
             opciones_validas['real_envido'] = False
             
         print(f"[{codigo}] {rol} reviró y gritó: {decision.upper()}")
         
-        # Hacemos rebotar el evento hacia el equipo contrario
         emit('envido_gritado', {
             'rol': rol,
             'tipo': decision,
@@ -348,7 +346,6 @@ def handle_responder_envido(data):
         print(f"[{codigo}] {rol} respondió al tanto con un: {decision.upper()}")
         partida["fase_envido"] = "terminada"
         
-        # Emitimos un aviso general para que todas las pantallas limpien sus modales de respuesta
         emit('envido_resuelto', {
             'mensaje': f'Apuesta de tantos resuelta con un "{decision.upper()}". Continúa la partida.',
             'decision': decision
