@@ -125,8 +125,25 @@
             const contenedor = document.getElementById('mis-cartas-container');
             contenedor.innerHTML = ""; 
 
-            // ✅ NUEVO: Al recibir cartas nuevas estamos en la Ronda 1, activamos la botonera
-            document.getElementById('botonera-envido').style.display = 'flex';
+            // ✅ CORREGIDO (DETALLE 1): Validación estricta por paridad de equipos para 2, 4 o 6 jugadores
+            const miRolActual = document.getElementById('mi-rol').innerText; // Ejemplo: "Tu Rol actual: Jugador 3"
+            const totalJugadores = parseInt(document.getElementById('select-jugadores').value);
+            const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+
+            let puedeCantar = false;
+            if (totalJugadores === 2) {
+                puedeCantar = true; // En 1 vs 1 cantan ambos sin restricciones
+            } else if (totalJugadores === 4) {
+                if (miNumeroJugador === 3 || miNumeroJugador === 4) puedeCantar = true;
+            } else if (totalJugadores === 6) {
+                if (miNumeroJugador === 5 || miNumeroJugador === 6) puedeCantar = true;
+            }
+
+            if (puedeCantar) {
+                document.getElementById('botonera-envido').style.display = 'flex';
+            } else {
+                document.getElementById('botonera-envido').style.display = 'none';
+            }
 
             data.cartas.forEach((carta, indice) => {
                 const imagenCarta = document.createElement('img');
@@ -155,7 +172,6 @@
         });
 
         socket.on('carta_jugada', (data) => {
-            // ✅ NUEVO: Si la carta jugada pertenece a una ronda mayor a 1, esfumamos los botones
             if (data.ronda > 1) {
                 document.getElementById('botonera-envido').style.display = 'none';
             }
@@ -208,7 +224,6 @@
             }
         });
 
-        // ✅ NUEVO: Función para despachar el grito del envido hacia app.py
         function cantarTantos(tipoGrito) {
             const codigo = document.getElementById('codigo-sala').value.toUpperCase();
             socket.emit('cantar_envido', {
