@@ -35,7 +35,7 @@ def index():
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
-    PRE: data contiene 'codigo' (string) and 'max_jugadores' (int: 2, 4 o 6).
+    PRE: data contiene 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
     POST: Registra la partida en el diccionario global y asigna al creador como Jugador 1.
     """
     codigo = data.get('codigo').upper() # Pasamos a mayúsculas para evitar errores de tipeo
@@ -60,7 +60,8 @@ def handle_crear_sala(data):
         "envido_acumulado": 0,
         "jugador_grito_envido": None,
         "respuestas_envido_recibidas": {},
-        "manos_internas": {}
+        "manos_internas": {},
+        "historial_gritos_envido": [] # Para el seguimiento de revires del Detalle 2
     }
     
     join_room(codigo)
@@ -97,7 +98,6 @@ def handle_unirse_sala(data):
         
         print(f"[NUEVO JUGADOR] Se unió a {codigo}: {id_sesion} como Jugador {numero_jugador}")
         
-        # ✅ CORREGIDO: Volvemos al nombre de evento correcto 'rol_asignado'
         emit('rol_asignado', {
             'mensaje': f'Te uniste como Jugador {numero_jugador}.',
             'rol': f'Jugador {numero_jugador}'
@@ -116,6 +116,7 @@ def handle_unirse_sala(data):
             partida["jugador_grito_envido"] = None
             partida["respuestas_envido_recibidas"] = {}
             partida["manos_internas"] = {}
+            partida["historial_gritos_envido"] = []
             
             # Avisamos a toda la sala que la mesa está lista
             emit('partida_lista', {
@@ -226,7 +227,7 @@ def handle_cantar_envido(data):
         
     partida = PARTIDAS[codigo]
     
-    # ✅ NUEVO / CORREGIDO: Validación estricta de turno para cantar tantos
+    # Validación estricta de turno para cantar tantos
     if id_sesion not in partida["jugadores"]:
         return
         
@@ -247,16 +248,38 @@ def handle_cantar_envido(data):
         
     rol = f"Jugador {indice_jugador + 1}"
     
+    # Registramos el grito actual en la cadena de revires
+    if "historial_gritos_envido" not in partida:
+        partida["historial_gritos_envido"] = []
+    partida["historial_gritos_envido"].append(tipo)
+    
     partida["fase_envido"] = "cantado"
     partida["jugador_grito_envido"] = id_sesion
     
+    # Deducimos las opciones de respuesta válidas según el reglamento mapeado
+    opciones_validas = {
+        'quiero': True,
+        'no_quiero': True,
+        'envido': False,
+        'real_envido': False,
+        'falta_envido': True
+    }
+    
+    cantidades_envido = partida["historial_gritos_envido"].count('envido')
+    if tipo == 'envido' and cantidades_envido < 2:
+        opciones_validas['envido'] = True
+        opciones_validas['real_envido'] = True
+    elif tipo == 'envido' and cantidades_envido == 2:
+        opciones_validas['real_envido'] = True
+    
     print(f"[{codigo}] {rol} gritó: {tipo.upper()}")
     
-    # Retransmitimos el grito para pausar las pantallas y activar los botones de respuesta
+    # Retransmitimos el grito para pausar las pantallas y activar los botones de respuesta con sus opciones
     emit('envido_gritado', {
         'rol': rol,
         'tipo': tipo,
-        'id_emisor': id_sesion
+        'id_emisor': id_sesion,
+        'opciones': opciones_validas
     }, room=codigo)
 
 
