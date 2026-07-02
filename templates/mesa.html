@@ -66,7 +66,7 @@
                 </button>
             </div>
 
-            <!-- ✅ NUEVO (DETALLE 2): Panel visual de respuestas para el rival ante apuestas de tantos -->
+            <!-- Panel visual de respuestas para el rival ante apuestas de tantos -->
             <div id="botonera-respuesta-envido" style="margin-bottom: 15px; display: none; justify-content: center; gap: 10px; background-color: #1e272e; padding: 10px; border-radius: 8px; border: 2px solid #8c52ff;">
                 <button onclick="responderTantos('quiero')" style="padding: 10px 15px; background-color: #4cd137; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
                     🟢 Quiero
@@ -246,6 +246,36 @@
             }
         });
 
+        // ✅ NUEVO (DETALLE 2): Escuchador de red para renderizar las opciones al equipo rival
+        socket.on('envido_gritado', (data) => {
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (miRolActual.includes("Espectador")) return;
+
+            // Conseguimos los números de jugador del emisor y el receptor
+            const numEmisor = parseInt(data.rol.replace("Jugador ", ""));
+            const numReceptor = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+
+            // ⚖️ Regla de bando por paridad (Impares: 1, 3, 5 vs Pares: 2, 4, 6)
+            const bandoEmisorEsPar = (numEmisor % 2 === 0);
+            const bandoReceptorEsPar = (numReceptor % 2 === 0);
+
+            // Si pertenezco al equipo contrario, se me activa la botonera de respuestas
+            if (bandoEmisorEsPar !== bandoReceptorEsPar) {
+                const botoneraRespuesta = document.getElementById('botonera-respuesta-envido');
+                botoneraRespuesta.style.display = 'flex';
+
+                // Habilitamos o deshabilitamos los botones según el árbol de opciones que envió Python
+                document.getElementById('btn-revire-envido').style.display = data.opciones.envido ? 'inline-block' : 'none';
+                document.getElementById('btn-revire-real').style.display = data.opciones.real_envido ? 'inline-block' : 'none';
+                document.getElementById('btn-revire-falta').style.display = data.opciones.falta_envido ? 'inline-block' : 'none';
+                
+                alert(`${data.rol} gritó: ${data.tipo.toUpperCase()}. ¡Te toca responder!`);
+            } else {
+                // Al equipo que cantó se le oculta su propia botonera de cantos provisoriamente
+                document.getElementById('botonera-envido').style.display = 'none';
+            }
+        });
+
         function cantarTantos(tipoGrito) {
             const codigo = document.getElementById('codigo-sala').value.toUpperCase();
             socket.emit('cantar_envido', {
@@ -254,13 +284,14 @@
             });
         }
 
-        // ✅ NUEVO (DETALLE 2): Función provisional para despachar la respuesta seleccionada hacia el servidor
         function responderTantos(decision) {
             const codigo = document.getElementById('codigo-sala').value.toUpperCase();
             socket.emit('responder_envido', {
                 codigo: codigo,
                 decision: decision
             });
+            // Ocultamos la botonera de respuestas inmediatamente tras elegir para evitar doble clic
+            document.getElementById('botonera-respuesta-envido').style.display = 'none';
         }
     </script>
 </body>
