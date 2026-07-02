@@ -35,7 +35,7 @@ def index():
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
-    PRE: data contiene 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
+    PRE: data contiene 'codigo' (string) and 'max_jugadores' (int: 2, 4 o 6).
     POST: Registra la partida en el diccionario global y asigna al creador como Jugador 1.
     """
     codigo = data.get('codigo').upper() # Pasamos a mayúsculas para evitar errores de tipeo
@@ -226,6 +226,17 @@ def handle_cantar_envido(data):
         
     partida = PARTIDAS[codigo]
     
+    # ✅ NUEVO / CORREGIDO: Validación estricta de turno para cantar tantos
+    if id_sesion not in partida["jugadores"]:
+        return
+        
+    indice_jugador = partida["jugadores"].index(id_sesion)
+    indice_turno = partida["turno_actual"]
+    
+    if indice_jugador != indice_turno:
+        emit('error', {'mensaje': 'No es tu turno de cantar tantos.'})
+        return
+    
     # Validación: Solo se puede gritar tantos si está disponible (Ronda 1 antes del pase)
     cartas_ya_tiradas = len(partida["historial_mesa"])
     ronda_actual = (cartas_ya_tiradas // partida["max_jugadores"]) + 1
@@ -234,7 +245,6 @@ def handle_cantar_envido(data):
         emit('error', {'mensaje': 'El envido solo se puede cantar en la primera ronda.'})
         return
         
-    indice_jugador = partida["jugadores"].index(id_sesion)
     rol = f"Jugador {indice_jugador + 1}"
     
     partida["fase_envido"] = "cantado"
