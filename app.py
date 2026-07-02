@@ -35,7 +35,7 @@ def index():
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
-    PRE: data contiene 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
+    PRE: data contains 'codigo' (string) and 'max_jugadores' (int: 2, 4 o 6).
     POST: Registra la partida en el diccionario global y asigna al creador como Jugador 1.
     """
     codigo = data.get('codigo').upper() # Pasamos a mayúsculas para evitar errores de tipeo
@@ -97,7 +97,7 @@ def handle_unirse_sala(data):
         
         print(f"[NUEVO JUGADOR] Se unió a {codigo}: {id_sesion} como Jugador {numero_jugador}")
         
-        emit('rol_asignado', {
+        emit('rol_assigned', {
             'mensaje': f'Te uniste como Jugador {numero_jugador}.',
             'rol': f'Jugador {numero_jugador}'
         }, room=id_sesion)
@@ -143,7 +143,11 @@ def handle_unirse_sala(data):
                 partida["manos_internas"][jugador_id] = mano_propia
                 
                 # Le enviamos de forma EXCLUSIVA y PRIVADA sus 3 cartas a este dispositivo
-                emit('recibir_cartas', {'cartas': cartas_serializadas}, room=jugador_id)
+                # ✅ MODIFICADO: Agregamos total_jugadores real del backend
+                emit('recibir_cartas', {
+                    'cartas': cartas_serializadas,
+                    'total_jugadores': partida["max_jugadores"]
+                }, room=jugador_id)
                 
     # 2. Si las sillas de juego están llenas, entra directo como Espectador
     else:
