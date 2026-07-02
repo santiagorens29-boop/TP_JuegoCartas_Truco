@@ -125,9 +125,9 @@
             const contenedor = document.getElementById('mis-cartas-container');
             contenedor.innerHTML = ""; 
 
-            // ✅ CORREGIDO (DETALLE 1): Validación estricta por paridad de equipos para 2, 4 o 6 jugadores
-            const miRolActual = document.getElementById('mi-rol').innerText; // Ejemplo: "Tu Rol actual: Jugador 3"
-            const totalJugadores = parseInt(document.getElementById('select-jugadores').value);
+            // ✅ CORREGIDO (DETALLE 1): Leemos los jugadores directamente desde la sincronización de Python
+            const miRolActual = document.getElementById('mi-rol').innerText; 
+            const totalJugadores = parseInt(data.total_jugadores);
             const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
 
             let puedeCantar = false;
