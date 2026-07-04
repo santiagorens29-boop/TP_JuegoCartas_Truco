@@ -35,7 +35,7 @@ def index():
 @socketio.on('crear_sala')
 def handle_crear_sala(data):
     """
-    PRE: data contiene 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
+    PRE: data contains 'codigo' (string) y 'max_jugadores' (int: 2, 4 o 6).
     POST: Registra la partida en el diccionario global y asigna al creador como Jugador 1.
     """
     codigo = data.get('codigo').upper() # Pasamos a mayúsculas para evitar errores de tipeo
@@ -159,7 +159,7 @@ def handle_unirse_sala(data):
         # ✅ REPARADO: Nombre correcto en español
         emit('rol_asignado', {
             'mensaje': 'La mesa está llena. Entraste en modo Espectador en vivo.',
-            'rol': 'Espectador'
+            'rol': 'Escpectador'
         }, room=id_sesion)
         
         emit('actualizacion_espectadores', {'total': len(partida["espectadores"])}, room=codigo)
@@ -268,11 +268,19 @@ def handle_cantar_envido(data):
     }
     
     cantidades_envido = partida["historial_gritos_envido"].count('envido')
-    if tipo == 'envido' and cantidades_envido < 2:
-        opciones_validas['envido'] = True
+    
+    if tipo == 'envido':
+        if cantidades_envido < 2:
+            opciones_validas['envido'] = True
         opciones_validas['real_envido'] = True
-    elif tipo == 'envido' and cantidades_envido == 2:
-        opciones_validas['real_envido'] = True
+    elif tipo == 'real_envido':
+        opciones_validas['envido'] = False
+        opciones_validas['real_envido'] = False
+    elif tipo == 'falta_envido':
+        # ✅ NUEVO: Si abre con Falta Envido de entrada, bloqueamos todos los revires de inmediato
+        opciones_validas['envido'] = False
+        opciones_validas['real_envido'] = False
+        opciones_validas['falta_envido'] = False
     
     print(f"[{codigo}] {rol} gritó: {tipo.upper()}")
     
@@ -331,6 +339,12 @@ def handle_responder_envido(data):
         elif decision == 'real_envido':
             opciones_validas['envido'] = False
             opciones_validas['real_envido'] = False
+        elif decision == 'falta_envido':
+            # ✅ NUEVO/CORREGIDO: Si reviran con Falta Envido, apagamos todos los botones de revire
+            # para obligar a elegir únicamente entre 'quiero' y 'no_quiero' y romper el ciclo infinito.
+            opciones_validas['envido'] = False
+            opciones_validas['real_envido'] = False
+            opciones_validas['falta_envido'] = False
             
         print(f"[{codigo}] {rol} reviró y gritó: {decision.upper()}")
         
