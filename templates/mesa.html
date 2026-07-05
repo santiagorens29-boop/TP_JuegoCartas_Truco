@@ -85,6 +85,17 @@
                 </button>
             </div>
 
+            <!-- Interfaz secuencial de Declaración de tantos individuales -->
+            <div id="botonera-anuncio-tanto" style="margin-bottom: 15px; display: none; justify-content: center; gap: 10px; background-color: #2c3a47; padding: 12px; border-radius: 8px; border: 2px solid #fbc531;">
+                <span id="label-tanto-calculado" style="font-weight: bold; align-self: center; margin-right: 5px; color: #fbc531;"></span>
+                <button id="btn-anunciar-numero" onclick="enviarDeclaracion('decir_tanto')" style="padding: 10px 15px; background-color: #2ed573; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    💬 Anunciar Tanto
+                </button>
+                <button onclick="enviarDeclaracion('son_buenas')" style="padding: 10px 15px; background-color: #718093; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    ⚪ Son Buenas
+                </button>
+            </div>
+
             <h4>Tus Cartas en Mano:</h4>
             <div id="mis-cartas-container" style="display: flex; justify-content: center; gap: 15px;">
             </div>
@@ -93,6 +104,8 @@
 
     <script>
         const socket = io();
+        
+        let miTantoLocalCalculado = 0;
 
         socket.on('connect', () => {
             const estado = document.getElementById('estado-conexion');
@@ -162,6 +175,30 @@
             } else {
                 document.getElementById('botonera-envido').style.display = 'none';
             }
+
+            // Algoritmo local provisorio para mostrar en el botón cuántos tantos tiene en mano
+            let cartasMapeadas = data.cartas.map(c => {
+                let v = parseInt(c.numero);
+                return { valor: v >= 10 ? 0 : v, palo: c.palo };
+            });
+            let palos = {};
+            cartasMapeadas.forEach(c => {
+                if(!palos[c.palo]) palos[c.palo] = [];
+                palos[c.palo].push(c.valor);
+            });
+            let maxLocal = 0;
+            Object.keys(palos).forEach(p => {
+                if(palos[p].length === 2) {
+                    let t = 20 + palos[p][0] + palos[p][1];
+                    if(t > maxLocal) maxLocal = t;
+                } else if(palos[p].length === 3) {
+                    palos[p].sort((a,b) => b-a);
+                    let t = 20 + palos[p][0] + palos[p][1];
+                    if(t > maxLocal) maxLocal = t;
+                }
+            });
+            cartasMapeadas.forEach(c => { if(c.valor > maxLocal) maxLocal = c.valor; });
+            miTantoLocalCalculado = maxLocal;
 
             data.cartas.forEach((carta, indice) => {
                 const imagenCarta = document.createElement('img');
@@ -246,32 +283,26 @@
             }
         });
 
-        // ✅ NUEVO (DETALLE 2): Escuchador de red para renderizar las opciones al equipo rival
         socket.on('envido_gritado', (data) => {
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes("Espectador")) return;
 
-            // Conseguimos los números de jugador del emisor y el receptor
             const numEmisor = parseInt(data.rol.replace("Jugador ", ""));
             const numReceptor = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
 
-            // ⚖️ Regla de bando por paridad (Impares: 1, 3, 5 vs Pares: 2, 4, 6)
             const bandoEmisorEsPar = (numEmisor % 2 === 0);
             const bandoReceptorEsPar = (numReceptor % 2 === 0);
 
-            // Si pertenezco al equipo contrario, se me activa la botonera de respuestas
             if (bandoEmisorEsPar !== bandoReceptorEsPar) {
                 const botoneraRespuesta = document.getElementById('botonera-respuesta-envido');
                 botoneraRespuesta.style.display = 'flex';
 
-                // Habilitamos o deshabilitamos los botones según el árbol de opciones que envió Python
                 document.getElementById('btn-revire-envido').style.display = data.opciones.envido ? 'inline-block' : 'none';
                 document.getElementById('btn-revire-real').style.display = data.opciones.real_envido ? 'inline-block' : 'none';
                 document.getElementById('btn-revire-falta').style.display = data.opciones.falta_envido ? 'inline-block' : 'none';
                 
                 alert(`${data.rol} gritó: ${data.tipo.toUpperCase()}. ¡Te toca responder!`);
             } else {
-                // Al equipo que cantó se le oculta su propia botonera de cantos provisoriamente
                 document.getElementById('botonera-envido').style.display = 'none';
             }
         });
@@ -290,8 +321,86 @@
                 codigo: codigo,
                 decision: decision
             });
-            // Ocultamos la botonera de respuestas inmediatamente tras elegir para evitar doble clic
             document.getElementById('botonera-respuesta-envido').style.display = 'none';
+        }
+
+        // ✅ MODIFICADO: Se pasa el valor inicial de 0 para el tanto de la mesa
+        socket.on('fase_declaracion_iniciada', (data) => {
+            alert(data.mensaje);
+            evaluarMiTurnoDeAnuncio(data.turno_idx, data.jugador_esperado, 0);
+        });
+
+        // ✅ MODIFICADO: Se extrae el parámetro tanto_maximo_mesa del backend
+        socket.on('siguiente_turno_declaracion', (data) => {
+            evaluarMiTurnoDeAnuncio(data.turno_idx, data.jugador_esperado, data.tanto_maximo_mesa);
+        });
+
+        socket.on('tanto_anunciado_sala', (data) => {
+            document.getElementById('texto-espera').style.display = 'block';
+            document.getElementById('texto-espera').innerText = data.mensaje;
+        });
+
+        // ✅ MODIFICADO: Limpieza total de los carteles de espera visuales
+        socket.on('envido_resuelto_quiero', (data) => {
+            document.getElementById('botonera-anuncio-tanto').style.display = 'none';
+            document.getElementById('texto-espera').style.display = 'none';
+            alert(`🏆 ¡FIN DEL ENVIDO!\n\n${data.mensaje}`);
+        });
+
+        socket.on('envido_resuelto_no_quiero', (data) => {
+            document.getElementById('botonera-respuesta-envido').style.display = 'none';
+            document.getElementById('texto-espera').style.display = 'none';
+            alert(`❌ ENVIDO RECHAZADO\n\n${data.mensaje}`);
+        });
+
+        // ✅ MODIFICADO: Lógica de control inteligente para la visibilidad de los botones de anuncios
+        function evaluarMiTurnoDeAnuncio(turnoIdxEsperado, stringJugadorEsperado, tantoMaximoMesa) {
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (miRolActual.includes("Espectador")) return;
+
+            const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+            const idxMiSilla = miNumeroJugador - 1;
+
+            const panelAnuncio = document.getElementById('botonera-anuncio-tanto');
+            const btnAnunciar = document.getElementById('btn-anunciar-numero');
+            const btnBuenas = panelAnuncio.getElementsByTagName('button')[1];
+            
+            if (idxMiSilla === parseInt(turnoIdxEsperado)) {
+                panelAnuncio.style.display = 'flex';
+                document.getElementById('label-tanto-calculado').innerText = `Tus tantos: ${miTantoLocalCalculado}`;
+                document.getElementById('texto-espera').innerText = "¡Es tu turno de declarar tus tantos!";
+                
+                // Si es el primer jugador (Jugador 1), se oculta "Son Buenas" para obligarlo a cantar
+                if (parseInt(turnoIdxEsperado) === 0) {
+                    btnBuenas.style.display = 'none';
+                    btnAnunciar.style.display = 'inline-block';
+                    btnAnunciar.innerText = `💬 Cantar ${miTantoLocalCalculado}`;
+                } else {
+                    btnBuenas.style.display = 'inline-block';
+                    // Si el tanto del jugador no supera el máximo de la mesa, se le oculta el botón de cantar número
+                    let maxActual = parseInt(tantoMaximoMesa || 0);
+                    if (miTantoLocalCalculado <= maxActual) {
+                        btnAnunciar.style.display = 'none';
+                    } else {
+                        btnAnunciar.style.display = 'inline-block';
+                        btnAnunciar.innerText = `💬 Cantar ${miTantoLocalCalculado}`;
+                    }
+                }
+            } else {
+                panelAnuncio.style.display = 'none';
+                document.getElementById('texto-espera').style.display = 'block';
+                document.getElementById('texto-espera').innerText = `Esperando que ${stringJugadorEsperado} declare...`;
+            }
+        }
+
+        function enviarDeclaracion(accionElegida) {
+            const codigo = document.getElementById('codigo-sala').value.toUpperCase();
+            socket.emit('declarar_tanto', {
+                codigo: codigo,
+                accion: accionElegida,
+                tanto: miTantoLocalCalculado
+            });
+            document.getElementById('botonera-anuncio-tanto').style.display = 'none';
         }
     </script>
 </body>
