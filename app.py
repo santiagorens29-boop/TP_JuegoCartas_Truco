@@ -11,7 +11,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Estructura del diccionario PARTIDAS:
 # {
 #   "CODIGO123": {
-#       "juego": objeto_truco,
+#       "juego": object_truco,
 #       "max_jugadores": 2, (o 4, o 6)
 #       "jugadores": [id_sesion1, id_sesion2, ...],
 #       "espectadores": [id_sesion3, ...],
@@ -264,7 +264,7 @@ def handle_tirar_carta(data):
     carta = data.get('carta')
     id_sesion = request.sid
     
-    if codigo not in PARTIDAS:
+    if code := codigo not in PARTIDAS:
         return
         
     partida = PARTIDAS[codigo]
@@ -365,7 +365,6 @@ def handle_cantar_envido(data):
         opciones_validas['envido'] = False
         opciones_validas['real_envido'] = False
     elif tipo == 'falta_envido':
-        # ✅ NUEVO: Si abre con Falta Envido de entrada, bloqueamos todos los revires de inmediato
         opciones_validas['envido'] = False
         opciones_validas['real_envido'] = False
         opciones_validas['falta_envido'] = False
@@ -428,8 +427,6 @@ def handle_responder_envido(data):
             opciones_validas['envido'] = False
             opciones_validas['real_envido'] = False
         elif decision == 'falta_envido':
-            # ✅ NUEVO/CORREGIDO: Si reviran con Falta Envido, apagamos todos los botones de revire
-            # para obligar a elegir únicamente entre 'quiero' y 'no_quiero' y romper el ciclo infinito.
             opciones_validas['envido'] = False
             opciones_validas['real_envido'] = False
             opciones_validas['falta_envido'] = False
@@ -459,7 +456,7 @@ def handle_responder_envido(data):
             partida["fase_envido"] = "terminada"
             
             emit('envido_resuelto_no_quiero', {
-                'mensaje': f'Apuesta rechazada con un "NO QUIERO". Bando {bando_ganador} suma {puntos_en_juego} punto(s).',
+                'mensaje': f'Apuesta basada en un "NO QUIERO". Bando {bando_ganador} suma {puntos_en_juego} punto(s).',
                 'bando_ganador': bando_ganador,
                 'puntos': puntos_en_juego
             }, room=codigo)
@@ -480,7 +477,7 @@ def handle_responder_envido(data):
             }, room=codigo)
 
 
-# ✅ NUEVO EVENTO: CONTROLADOR DEL ANUNCIO SECUENCIAL DE TANTOS POR EQUIPOS
+# CONTROLADOR DEL ANUNCIO SECUENCIAL DE TANTOS POR EQUIPOS
 @socketio.on('declarar_tanto')
 def handle_declarar_tanto(data):
     """
@@ -522,7 +519,6 @@ def handle_declarar_tanto(data):
         print(f"[{codigo}] {rol_actual} declara: {tanto_declarado} tantos reales.")
         
         # Verificamos si supera el puntaje máximo registrado hasta ahora en la mesa
-        # En caso de igualdad, el jugador actual no supera al líder anterior porque el anterior está antes en orden de mesa
         if tanto_declarado > partida["tanto_maximo_mesa"]:
             partida["tanto_maximo_mesa"] = tanto_declarado
             partida["jugador_lider_tanto"] = id_sesion
@@ -553,6 +549,8 @@ def handle_declarar_tanto(data):
         pts = partida["puntos_envido_calculados"]
         
         print(f"[{codigo}] Fin de declaracion. Ganador: Jugador {idx_ganador + 1} (Bando {bando_ganador}) con un máximo de {partida['tanto_maximo_mesa']} tantos.")
+        
+        # ✅ CAMBIADO DE MANERA DEFINITIVA: Seteamos 'terminada' para destrabar el lanzamiento de cartas
         partida["fase_envido"] = "terminada"
         
         emit('envido_resuelto_quiero', {
@@ -563,12 +561,13 @@ def handle_declarar_tanto(data):
             'tanto_ganador': partida["tanto_maximo_mesa"]
         }, room=codigo)
     else:
-        # Quedan jugadores por hablar, notificamos el siguiente turno de la cadena
+        # Quedan jugadores por hablar, notificamos el siguiente turno pasando el tanto_maximo_mesa actual
         siguiente_idx = partida["turno_anuncio_actual"]
         print(f"[{codigo}] Siguiente en declarar por orden de mesa: Jugador {siguiente_idx + 1}")
         emit('siguiente_turno_declaracion', {
             'turno_idx': siguiente_idx,
-            'jugador_esperado': f"Jugador {siguiente_idx + 1}"
+            'jugador_esperado': f"Jugador {siguiente_idx + 1}",
+            'tanto_maximo_mesa': partida["tanto_maximo_mesa"] # ✅ Enviado al front de forma segura
         }, room=codigo)
 
 
