@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Siete y Medio - Casino Central</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body style="background-color: #1e272e; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; padding: 20px;">
+
+    <h1>💰 Juego del Siete y Medio 💰</h1>
+    <a href="/" style="color: #00a8ff; text-decoration: none; font-weight: bold;">⬅️ Volver al Menú Principal</a>
+
+    <div id="pantalla-lobby-siete" style="max-width: 400px; margin: 30px auto; background-color: #2f3640; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+        <h3>Configurar Sala Siete y Medio</h3>
+        <input type="text" id="sala-siete" placeholder="Código (Ej: SIETE77)" style="width: 90%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: none; text-transform: uppercase;"><br>
+        <button onclick="crearSiete()" style="width: 100%; padding: 12px; background-color: #4cd137; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-bottom: 10px;">Crear Mesa</button>
+        <button onclick="unirseSiete()" style="width: 100%; padding: 12px; background-color: #00a8ff; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">Unirse</button>
+    </div>
+
+    <div id="pantalla-juego-siete" style="display: none; max-width: 800px; margin: 20px auto; background-color: #0c5c36; border: 8px solid #00a8ff; border-radius: 15px; padding: 20px; min-height: 400px;">
+        <h2 id="info-sala-siete" style="color: #fbc531;"></h2>
+        <div id="mi-rol-siete" style="color: #00a8ff; font-weight: bold; margin-bottom: 15px;"></div>
+        <h3 id="indicador-turno" style="color: #fff; background-color: rgba(0,0,0,0.4); padding: 8px; display: inline-block; border-radius: 5px;">Esperando jugadores...</h3>
+
+        <!-- Tablero de Cartas -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+            <div style="background-color: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; min-height: 180px;">
+                <h4>Cartas Jugador 1 (Banca): <span id="cuenta-j1" style="color: #fbc531;">0</span></h4>
+                <div id="cartas-j1" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;"></div>
+            </div>
+            <div style="background-color: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; min-height: 180px;">
+                <h4>Cartas Jugador 2: <span id="cuenta-j2" style="color: #fbc531;">0</span></h4>
+                <div id="cartas-j2" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;"></div>
+            </div>
+        </div>
+
+        <!-- Acciones -->
+        <div id="botonera-acciones-siete" style="display: none; justify-content: center; gap: 15px; background-color: #2f3640; padding: 15px; border-radius: 10px;">
+            <button onclick="pedirCarta()" style="padding: 12px 25px; background-color: #4cd137; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1.1rem;">🃏 Pedir Carta</button>
+            <button onclick="plantarse()" style="padding: 12px 25px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 1.1rem;">🛑 Plantarse</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let miSumaSiete = 0;
+        let puedoJugarSiete = false;
+
+        function crearSiete() {
+            const cod = document.getElementById('sala-siete').value;
+            if(!cod) return;
+            socket.emit('siete_crear_sala', { codigo: cod });
+        }
+
+        function unirseSiete() {
+            const cod = document.getElementById('sala-siete').value;
+            if(!cod) return;
+            socket.emit('siete_unirse_sala', { codigo: cod });
+        }
+
+        socket.on('siete_sala_creada', (data) => { abrirJuegoSiete(data.rol, data.codigo); });
+        socket.on('siete_rol_asignado', (data) => { abrirJuegoSiete(data.rol, data.codigo); });
+
+        function abrirJuegoSiete(rol, codigo) {
+            document.getElementById('pantalla-lobby-siete').style.display = 'none';
+            document.getElementById('pantalla-juego-siete').style.display = 'block';
+            document.getElementById('info-sala-siete').innerText = `SALA: ${codigo.toUpperCase()}`;
+            document.getElementById('mi-rol-siete').innerText = `Tu Rol: ${rol}`;
+        }
+
+        socket.on('siete_partida_lista', (data) => {
+            alert(data.mensaje);
+            evaluarTurnoVisual(data.turno_actual_idx);
+        });
+
+        socket.on('error', (data) => { alert(data.mensaje); });
+
+        function pedirCarta() {
+            const cod = document.getElementById('sala-siete').value.toUpperCase();
+            socket.emit('siete_pedir_carta', { codigo: cod });
+        }
+
+        function plantarse() {
+            const cod = document.getElementById('sala-siete').value.toUpperCase();
+            socket.emit('siete_plantarse', { codigo: cod });
+        }
+
+        socket.on('siete_carta_recibida', (data) => {
+            const contenedor = data.rol === "Jugador 1" ? document.getElementById('cartas-j1') : document.getElementById('cartas-j2');
+            const img = document.createElement('img');
+            img.src = `static/cartas/${data.numero}_${data.palo}.png`;
+            img.style.width = "75px";
+            img.style.borderRadius = "5px";
+            contenedor.appendChild(img);
+
+            // Sumamos el puntaje local de forma visual
+            const miRol = document.getElementById('mi-rol-siete').innerText;
+            if (miRol.includes(data.rol)) {
+                miSumaSiete += data.valor_siete;
+                if (miSumaSiete > 7.5) {
+                    alert("💥 ¡Te pasaste de 7.5! Perdiste esta ronda.");
+                    plantarse(); // Se planta automáticamente al pasarse
+                }
+            }
+
+            const spanCuenta = data.rol === "Jugador 1" ? document.getElementById('cuenta-j1') : document.getElementById('cuenta-j2');
+            spanCuenta.innerText = parseFloat(spanCuenta.innerText) + data.valor_siete;
+        });
+
+        socket.on('siete_cambio_turno', (data) => {
+            evaluarTurnoVisual(data.turno_actual_idx);
+        });
+
+        socket.on('siete_juego_terminado', (data) => {
+            document.getElementById('botonera-actions-siete').style.display = 'none';
+            document.getElementById('indicador-turno').innerText = "Juego Terminado";
+            alert(data.mensaje);
+        });
+
+        function evaluarTurnoVisual(turnoIdx) {
+            const miRol = document.getElementById('mi-rol-siete').innerText;
+            const botonera = document.getElementById('botonera-acciones-siete');
+            const indicador = document.getElementById('indicador-turno');
+            
+            let miNumero = miRol.includes("Jugador 1") ? 0 : (miRol.includes("Jugador 2") ? 1 : -1);
+            
+            if (turnoIdx === miNumero) {
+                botonera.style.display = 'flex';
+                indicador.innerText = "👉 ¡Es tu turno de pedir o plantarte!";
+                indicador.style.color = "#4cd137";
+            } else {
+                botonera.style.display = 'none';
+                indicador.innerText = `Esperando al Jugador ${turnoIdx + 1}...`;
+                indicador.style.color = "#fff";
+            }
+        }
+    </script>
+</body>
+</html>

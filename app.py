@@ -94,8 +94,18 @@ def chequear_retorno_truco_pausado(partida, codigo):
 
 @app.route('/')
 def index():
-    return render_template('mesa.html')
+    """Menú principal de selección de juego."""
+    return render_template('index.html')
 
+@app.route('/truco')
+def juego_truco():
+    """Lleva a la pantalla del Truco que ya armaste."""
+    return render_template('truco.html') # Acár va tu mesa del truco actual
+
+@app.route('/siete_y_medio')
+def juego_siete():
+    """Lleva a la nueva pantalla del Siete y Medio."""
+    return render_template('siete.html')
 
 # --- EVENTOS DE WEBSOCKETS ---
 
@@ -120,6 +130,7 @@ def handle_crear_sala(data):
         "puntos_envido_calculados": 0,
         "jugador_grito_envido": None,
         "manos_internas": {},
+        "manos_iniciales": {},  
         "historial_gritos_envido": [],
         "fase_truco": "disponible",
         "bando_con_la_pelota_truco": None,
@@ -162,6 +173,7 @@ def handle_unirse_sala(data):
             partida["historial_mesa"] = []
             partida["fase_envido"] = "disponible"
             partida["manos_internas"] = {}
+            partida["manos_iniciales"] = {}  
             partida["historial_gritos_envido"] = []
             partida["fase_truco"] = "disponible"
             partida["puntos_truco_en_juego"] = 1
@@ -174,17 +186,22 @@ def handle_unirse_sala(data):
             for jugador_id in partida["jugadores"]:
                 from tads.lista_enlazada import ListaEnlazada
                 mano_propia = ListaEnlazada()
+                mano_inicial_copia = ListaEnlazada()  
                 cartas_serializadas = []
                 
                 for _ in range(partida["juego"].cartas_por_mano):
                     carta_robada = partida["juego"].mazo.robar_carta()
                     mano_propia.insertar_final(carta_robada)
+                    mano_inicial_copia.insertar_final(carta_robada)  
+                    
                     cartas_serializadas.append({
                         'numero': carta_robada.valor,
                         'palo': str(carta_robada.palo).lower()
                     })
                 
                 partida["manos_internas"][jugador_id] = mano_propia
+                partida["manos_iniciales"][jugador_id] = mano_inicial_copia  
+                
                 emit('recibir_cartas', {
                     'cartas': cartas_serializadas,
                     'total_jugadores': partida["max_jugadores"]
@@ -210,7 +227,7 @@ def handle_tirar_carta(data):
         emit('error', {'mensaje': 'Hay una apuesta de tantos activa. Deben responder primero.'})
         return
 
-    if partida["fase_truco"] in ["truco_cantado", "retruco_cantado", "vale4_cantado", "pausado_por_envido"]:
+    if "cantado" in partida["fase_truco"]:
         emit('error', {'mensaje': 'Hay un grito de Truco pendiente.'})
         return
         
@@ -224,7 +241,6 @@ def handle_tirar_carta(data):
     partida["historial_mesa"].append({'jugador': id_sesion, 'carta': carta})
     cartas_ya_tiradas = len(partida["historial_mesa"])
     
-    # La ronda visual progresa de manera exacta según la vuelta de la mesa
     ronda_deducida = ((cartas_ya_tiradas - 1) // partida["max_jugadores"]) + 1
     
     rol = f"Jugador {indice_jugador + 1}"
@@ -236,16 +252,13 @@ def handle_tirar_carta(data):
         'ronda': ronda_deducida
     }, room=codigo)
     
-    # ✅ LÓGICA LINEAL PURA: El turno pasa al siguiente de forma circular (J1 -> J2 -> J1 -> J2)
     partida["turno_actual"] = (indice_turno + 1) % partida["max_jugadores"]
     
-    # Informamos del cambio estricto de turno a la sala
     emit('cambio_turno_sincro', {
         'turno_actual_idx': partida["turno_actual"],
         'jugador_esperado': f"Jugador {partida['turno_actual'] + 1}"
     }, room=codigo)
     
-    # Si todos los de la mesa completaron la vuelta, dejamos asentado en consola el cierre de la ronda
     if cartas_ya_tiradas % partida["max_jugadores"] == 0:
         print(f"[{codigo}] Fin de la Ronda {ronda_deducida}. Próximo tiro: Jugador {partida['turno_actual'] + 1}")
 
@@ -291,6 +304,8 @@ def handle_responder_envido(data):
     indice_jugador = partida["jugadores"].index(id_sesion)
     rol = f"Jugador {indice_jugador + 1}"
     
+    bando_respondente = "Impar" if (indice_jugador % 2 == 0) else "Par"
+    
     if decision in ['envido', 'real_envido', 'falta_envido']:
         partida["historial_gritos_envido"].append(decision)
         partida["jugador_grito_envido"] = id_sesion
@@ -318,6 +333,7 @@ def handle_responder_envido(data):
             partida["turno_anuncio_actual"] = 0
             
             emit('fase_declaracion_iniciada', {
+                'bando_defensor': bando_respondente,
                 'mensaje': f'¡Apuesta aceptada por {puntos} puntos! Canten por orden.',
                 'turno_idx': 0,
                 'jugador_esperado': "Jugador 1"
@@ -327,7 +343,7 @@ def handle_responder_envido(data):
 @socketio.on('declarar_tanto')
 def handle_declarar_tanto(data):
     codigo = data.get('codigo').upper()
-    accion = data.get('accion')
+    accion = data.get('accion') # decir_tanto o son_buenas
     id_sesion = request.sid
     
     if codigo not in PARTIDAS: return
@@ -338,8 +354,16 @@ def handle_declarar_tanto(data):
         
     rol_actual = f"Jugador {idx_esperado + 1}"
     
+    # ✅ CORRECCIÓN EN LA VALIDACIÓN: Solo verificamos el número si la acción es 'decir_tanto'
     if accion == 'decir_tanto':
+        mano_original_completa = partida["manos_iniciales"][id_sesion]
+        tanto_real_jugador = calcular_envido_mano(mano_original_completa)
         tanto_declarado = int(data.get('tanto', 0))
+        
+        if tanto_declarado != tanto_real_jugador:
+            emit('error', {'mensaje': f'Tus cartas reales suman {tanto_real_jugador} de envido. No podés cantar otra cosa.'})
+            return
+            
         if tanto_declarado > partida["tanto_maximo_mesa"]:
             partida["tanto_maximo_mesa"] = tanto_declarado
             
@@ -348,6 +372,7 @@ def handle_declarar_tanto(data):
             'mensaje': f'{rol_actual} dice: {tanto_declarado}.'
         }, room=codigo)
     else:
+        # Si dice 'son_buenas', el flujo progresa libremente sin trabar la secuencia
         emit('tanto_anunciado_sala', {
             'rol': rol_actual,
             'mensaje': f'{rol_actual} dice: Son Buenas.'
@@ -382,24 +407,19 @@ def handle_cantar_truco(data):
     if id_sesion not in partida["jugadores"]: return
     idx_jugador = partida["jugadores"].index(id_sesion)
     
-    # 1. Identificamos los bandos (Sillas impares vs pares)
     bando_emisor = "Impar" if (idx_jugador % 2 == 0) else "Par"
     bando_receptor = "Par" if bando_emisor == "Impar" else "Impar"
 
-    # 2. VALIDACIÓN DE TURNO CRÍTICA:
-    # Si el Truco está disponible (nadie cantó todavía), SOLO lo puede cantar el bando que tiene el turno de juego
     if partida["fase_truco"] == "disponible":
         idx_turno_actual = partida["turno_actual"]
         bando_turno = "Impar" if (idx_turno_actual % 2 == 0) else "Par"
-        
         if bando_emisor != bando_turno:
             emit('error', {'mensaje': 'Solo podés cantar Truco cuando es el turno de juego de tu bando.'})
             return
 
-    # Si ya hay una propuesta en curso (ej: truco_cantado), el control de quién responde lo maneja el bando receptor
-    if partida["fase_truco"] != "disponible":
+    if "cantado" not in partida["fase_truco"] and partida["fase_truco"] != "disponible":
         if bando_emisor != partida.get("bando_con_la_pelota_truco"):
-            emit('error', {'mensaje': 'Tu bando no tiene permitido revirar en este momento.'})
+            emit('error', {'mensaje': 'Tu bando no tiene permitido revirar.'})
             return
 
     opciones_validas = {
@@ -434,6 +454,8 @@ def handle_responder_truco(data):
     partida = PARTIDAS[codigo]
 
     idx_jugador = partida["jugadores"].index(id_sesion)
+    bando_respondente = "Impar" if (idx_jugador % 2 == 0) else "Par"
+    bando_contrario = "Par" if bando_respondente == "Impar" else "Impar"
 
     if decision == 'envido_primero':
         partida["fase_truco_pausada"] = partida["fase_truco"]
@@ -452,15 +474,148 @@ def handle_responder_truco(data):
         return
 
     if decision == 'quiero':
-        partida["fase_truco"] = "aceptado"
+        if partida["fase_truco"] == "truco_cantado":
+            partida["fase_truco"] = "truco_querido"
+        elif partida["fase_truco"] == "retruco_cantado":
+            partida["fase_truco"] = "retruco_querido"
+        elif partida["fase_truco"] == "vale_4_cantado":
+            partida["fase_truco"] = "vale4_querido"
+
+        partida["bando_con_la_pelota_truco"] = bando_contrario
+
         emit('truco_resuelto', {
-            'mensaje': f'¡Aceptaron el grito! Sigan jugando las cartas.',
-            'fase_truco': "truco_querido"
+            'bando_defensor': bando_respondente,
+            'mensaje': f'El bando {bando_respondente} aceptó el grito. ¡Sigan jugando las cartas!',
+            'fase_truco': partida["fase_truco"]
         }, room=codigo)
+
     elif decision == 'no_quiero':
         partida["fase_truco"] = "terminada"
         emit('mano_finalizada', {
-            'mensaje': f'No se quiso la apuesta. Sumen los puntos del retiro y repartan de nuevo.'
+            'bando_defensor': bando_respondente,
+            'mensaje': f'El bando {bando_respondente} dijo NO QUIERO. Fin de la mano de cartas.'
+        }, room=codigo)
+
+# --- LOGICA COMPLEMENTARIA: SIETE Y MEDIO ---
+PARTIDAS_SIETE = {}
+
+@socketio.on('siete_crear_sala')
+def handle_siete_crear(data):
+    codigo = data.get('codigo').upper()
+    id_sesion = request.sid
+    
+    if codigo in PARTIDAS_SIETE:
+        emit('error', {'mensaje': 'Ese código de sala ya existe en Siete y Medio.'})
+        return
+
+    # Inicializamos un mazo limpio para este juego usando tu V1
+    instancia_juego = Truco()
+    instancia_juego.iniciar_partida() 
+
+    PARTIDAS_SIETE[codigo] = {
+        "juego": instancia_juego,
+        "jugadores": [id_sesion],
+        "turno_actual": 0,
+        "puntos_mesas": {}
+    }
+    
+    join_room(codigo)
+    emit('siete_sala_creada', {'rol': 'Jugador 1 (Banca)', 'codigo': codigo})
+
+
+@socketio.on('siete_unirse_sala')
+def handle_siete_unirse(data):
+    codigo = data.get('codigo').upper()
+    id_sesion = request.sid
+    
+    if codigo not in PARTIDAS_SIETE:
+        emit('error', {'mensaje': 'La sala de Siete y Medio no existe.'})
+        return
+        
+    partida = PARTIDAS_SIETE[codigo]
+    join_room(codigo)
+    
+    if len(partida["jugadores"]) < 2:
+        partida["jugadores"].append(id_sesion)
+        emit('siete_rol_asignado', {'rol': 'Jugador 2', 'codigo': codigo}, room=id_sesion)
+        
+        # Al estar los 2, arranca la partida automáticamente
+        partida["turno_actual"] = 0
+        emit('siete_partida_lista', {
+            'mensaje': '¡Partida lista! J1 (Banca) empieza pidiendo carta.',
+            'turno_actual_idx': 0
+        }, room=codigo)
+    else:
+        emit('siete_rol_asignado', {'rol': 'Espectador', 'codigo': codigo}, room=id_sesion)
+
+
+@socketio.on('siete_pedir_carta')
+def handle_siete_pedir(data):
+    codigo = data.get('codigo').upper()
+    id_sesion = request.sid
+    
+    if codigo not in PARTIDAS_SIETE: return
+    partida = PARTIDAS_SIETE[codigo]
+    
+    if id_sesion not in partida["jugadores"]: return
+    idx = partida["jugadores"].index(id_sesion)
+    
+    if idx != partida["turno_actual"]:
+        emit('error', {'mensaje': 'No es tu turno de pedir.'})
+        return
+        
+    try:
+        # ✅ CORRECCIÓN DE TAD: Usamos el método nativo de tu V1 para desencadenar o desapilar del mazo
+        carta_sacada = partida["juego"].mazo.robar_carta()
+    except Exception as e:
+        print(f"Error al robar carta: {e}")
+        emit('error', {'mensaje': 'No se pudo robar la carta o el mazo está vacío.'})
+        return
+        
+    if not carta_sacada:
+        emit('error', {'mensaje': 'No quedan más cartas en el mazo.'})
+        return
+        
+    # Mapeamos los valores según las reglas oficiales del Siete y Medio
+    num = carta_sacada.valor
+    valor_siete = float(num) if num < 10 else 0.5
+    
+    print(f"[{codigo} - 7.5] Jugador {idx + 1} pidió carta: {num} de {carta_sacada.palo}")
+    
+    emit('siete_carta_recibida', {
+        'rol': f"Jugador {idx + 1}",
+        'numero': num,
+        'palo': str(carta_sacada.palo).lower(),
+        'valor_siete': valor_siete
+    }, room=codigo)
+
+
+@socketio.on('siete_plantarse')
+def handle_siete_plantar(data):
+    codigo = data.get('codigo').upper()
+    id_sesion = request.sid
+    
+    if codigo not in PARTIDAS_SIETE: return
+    partida = PARTIDAS_SIETE[codigo]
+    
+    if id_sesion not in partida["jugadores"]: return
+    idx = partida["jugadores"].index(id_sesion)
+    
+    if idx != partida["turno_actual"]: return
+
+    if partida["turno_actual"] == 0:
+        # Pasa el turno al J2 de forma estricta
+        partida["turno_actual"] = 1
+        print(f"[{codigo} - 7.5] Jugador 1 se plantó. Turno del Jugador 2.")
+        emit('siete_cambio_turno', {
+            'turno_actual_idx': 1,
+            'mensaje': 'Jugador 1 se plantó. Turno del Jugador 2.'
+        }, room=codigo)
+    else:
+        # Ya se plantaron ambos. Fin de la ronda
+        print(f"[{codigo} - 7.5] Ambos jugadores se plantaron. Fin del juego.")
+        emit('siete_juego_terminado', {
+            'mensaje': '¡Ambos jugadores se plantaron! Verifiquen sus cartas para ver quién ganó.'
         }, room=codigo)
 
 

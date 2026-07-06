@@ -320,7 +320,6 @@
             }
         });
 
-        // ✅ NUEVO ESCUCHADOR CRÍTICO: Recibe la actualización del turno real desde el backend
         socket.on('cambio_turno_sincro', (data) => {
             const textoEspera = document.getElementById('texto-espera');
             if (textoEspera) {
@@ -328,15 +327,14 @@
                 textoEspera.innerText = `Turno de juego: ${data.jugador_esperado}`;
             }
 
-            // Controlamos visualmente si mostramos el botón de Truco según el bando del turno
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (!miRolActual.includes("Espectador")) {
                 const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
                 const miBando = (miNumeroJugador % 2 === 0) ? "Par" : "Impar";
                 const bandoDelTurno = (parseInt(data.turno_actual_idx) % 2 === 0) ? "Impar" : "Par";
 
-                // Solo si el truco no fue jugado/terminado, manejamos su visibilidad por turno
                 const panelTruco = document.getElementById('botonera-truco-ofensiva');
+                // Sincronizamos visibilidad estricta por bando de juego
                 if (panelTruco.style.display !== 'none' || bandoDelTurno === miBando) {
                     panelTruco.style.display = (miBando === bandoDelTurno) ? 'flex' : 'none';
                 }
@@ -407,7 +405,6 @@
             document.getElementById('texto-espera').style.display = 'none';
             alert(`🏆 ¡FIN DEL ENVIDO!\n\n${data.mensaje}`);
             
-            // Devolvemos visibilidad de la botonera ofensiva de cartas al terminar los tantos
             const miRolActual = document.getElementById('mi-rol').innerText;
             if(!miRolActual.includes("Espectador")) {
                 document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
@@ -419,7 +416,6 @@
             document.getElementById('texto-espera').style.display = 'none';
             alert(`❌ ENVIDO RECHAZADO\n\n${data.mensaje}`);
             
-            // Devolvemos visibilidad de la botonera ofensiva de cartas
             const miRolActual = document.getElementById('mi-rol').innerText;
             if(!miRolActual.includes("Espectador")) {
                 document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
@@ -488,6 +484,7 @@
                 codigo: codigo,
                 decision: decision
             });
+            // ✅ SINCRO LOCAL: Oculta inmediatamente la botonera en la pantalla que cliqueó
             document.getElementById('botonera-respuesta-truco').style.display = 'none';
         }
 
@@ -520,7 +517,15 @@
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes("Espectador")) return;
 
-            document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
+            const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+            const miBando = (miNumeroJugador % 2 === 0) ? "Par" : "Impar";
+
+            // ✅ ARREGLO DE EQUIPO INTERFAZ: Si alguien ya aceptó, ocultamos las botoneras de respuesta a TODOS
+            document.getElementById('botonera-respuesta-truco').style.display = 'none';
+
+            // ✅ MUTACIÓN DINÁMICA DE BOTONES: Evaluamos la fase querida real para mutar los botones ofensivos
+            const panelTruco = document.getElementById('botonera-truco-ofensiva');
+            panelTruco.style.display = 'flex';
 
             if (data.fase_truco === "truco_querido") {
                 document.getElementById('btn-gritar-truco').style.display = 'none';
@@ -531,7 +536,7 @@
                 document.getElementById('btn-gritar-retruco').style.display = 'none';
                 document.getElementById('btn-gritar-vale4').style.display = 'inline-block';
             } else {
-                document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+                panelTruco.style.display = 'none';
             }
         });
 
