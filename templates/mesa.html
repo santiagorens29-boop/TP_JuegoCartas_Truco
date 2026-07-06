@@ -91,8 +91,40 @@
                 <button id="btn-anunciar-numero" onclick="enviarDeclaracion('decir_tanto')" style="padding: 10px 15px; background-color: #2ed573; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
                     💬 Anunciar Tanto
                 </button>
-                <button onclick="enviarDeclaracion('son_buenas')" style="padding: 10px 15px; background-color: #718093; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                <button id="btn-son-buenas" onclick="enviarDeclaracion('son_buenas')" style="padding: 10px 15px; background-color: #718093; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
                     ⚪ Son Buenas
+                </button>
+            </div>
+
+            <!-- Panel de acciones ofensivas de cartas -->
+            <div id="botonera-truco-ofensiva" style="margin-bottom: 15px; display: none; justify-content: center; gap: 10px; background-color: #1e272e; padding: 8px; border-radius: 8px; border: 1px dashed #fff;">
+                <button id="btn-gritar-truco" onclick="gritarTruco('truco')" style="padding: 10px 15px; background-color: #8c52ff; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    🃏 Truco
+                </button>
+                <button id="btn-gritar-retruco" onclick="gritarTruco('retruco')" style="padding: 10px 15px; background-color: #9c27b0; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; display: none;">
+                    🔄 Retruco
+                </button>
+                <button id="btn-gritar-vale4" onclick="gritarTruco('vale_4')" style="padding: 10px 15px; background-color: #e91e63; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; display: none;">
+                    🔥 Vale 4
+                </button>
+            </div>
+
+            <!-- Panel de respuestas de Truco -->
+            <div id="botonera-respuesta-truco" style="margin-bottom: 15px; display: none; justify-content: center; gap: 10px; background-color: #2f3640; padding: 12px; border-radius: 8px; border: 2px solid #8c52ff;">
+                <button onclick="responderTruco('quiero')" style="padding: 10px 15px; background-color: #4cd137; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    👍 Quiero
+                </button>
+                <button onclick="responderTruco('no_quiero')" style="padding: 10px 15px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                    👎 No Quiero
+                </button>
+                <button id="btn-responder-retruco" onclick="gritarTruco('retruco')" style="padding: 10px 15px; background-color: #9c27b0; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; display: none;">
+                    🔄 Retruco
+                </button>
+                <button id="btn-responder-vale4" onclick="gritarTruco('vale_4')" style="padding: 10px 15px; background-color: #e91e63; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; display: none;">
+                    🔥 Vale 4
+                </button>
+                <button id="btn-envido-primero" onclick="responderTruco('envido_primero')" style="padding: 10px 15px; background-color: #fbc531; color: black; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; display: none;">
+                    📢 Envido Primero
                 </button>
             </div>
 
@@ -139,6 +171,11 @@
         socket.on('partida_lista', (data) => {
             alert(data.mensaje);
             document.getElementById('texto-espera').innerText = "¡La partida comenzó! Turno del Jugador 1...";
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if(!miRolActual.includes("Espectador")) {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
+                document.getElementById('btn-gritar-truco').style.display = 'inline-block';
+            }
         });
 
         socket.on('error', (data) => {
@@ -176,7 +213,6 @@
                 document.getElementById('botonera-envido').style.display = 'none';
             }
 
-            // Algoritmo local provisorio para mostrar en el botón cuántos tantos tiene en mano
             let cartasMapeadas = data.cartas.map(c => {
                 let v = parseInt(c.numero);
                 return { valor: v >= 10 ? 0 : v, palo: c.palo };
@@ -198,6 +234,7 @@
                 }
             });
             cartasMapeadas.forEach(c => { if(c.valor > maxLocal) maxLocal = c.valor; });
+            
             miTantoLocalCalculado = maxLocal;
 
             data.cartas.forEach((carta, indice) => {
@@ -283,9 +320,35 @@
             }
         });
 
+        // ✅ NUEVO ESCUCHADOR CRÍTICO: Recibe la actualización del turno real desde el backend
+        socket.on('cambio_turno_sincro', (data) => {
+            const textoEspera = document.getElementById('texto-espera');
+            if (textoEspera) {
+                textoEspera.style.display = "block";
+                textoEspera.innerText = `Turno de juego: ${data.jugador_esperado}`;
+            }
+
+            // Controlamos visualmente si mostramos el botón de Truco según el bando del turno
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (!miRolActual.includes("Espectador")) {
+                const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+                const miBando = (miNumeroJugador % 2 === 0) ? "Par" : "Impar";
+                const bandoDelTurno = (parseInt(data.turno_actual_idx) % 2 === 0) ? "Impar" : "Par";
+
+                // Solo si el truco no fue jugado/terminado, manejamos su visibilidad por turno
+                const panelTruco = document.getElementById('botonera-truco-ofensiva');
+                if (panelTruco.style.display !== 'none' || bandoDelTurno === miBando) {
+                    panelTruco.style.display = (miBando === bandoDelTurno) ? 'flex' : 'none';
+                }
+            }
+        });
+
         socket.on('envido_gritado', (data) => {
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes("Espectador")) return;
+
+            document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+            document.getElementById('botonera-respuesta-truco').style.display = 'none';
 
             const numEmisor = parseInt(data.rol.replace("Jugador ", ""));
             const numReceptor = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
@@ -301,7 +364,8 @@
                 document.getElementById('btn-revire-real').style.display = data.opciones.real_envido ? 'inline-block' : 'none';
                 document.getElementById('btn-revire-falta').style.display = data.opciones.falta_envido ? 'inline-block' : 'none';
                 
-                alert(`${data.rol} gritó: ${data.tipo.toUpperCase()}. ¡Te toca responder!`);
+                let msg = data.mensaje_especial ? data.mensaje_especial : `${data.rol} gritó: ${data.tipo.toUpperCase()}. ¡Te toca responder!`;
+                alert(msg);
             } else {
                 document.getElementById('botonera-envido').style.display = 'none';
             }
@@ -324,13 +388,11 @@
             document.getElementById('botonera-respuesta-envido').style.display = 'none';
         }
 
-        // ✅ MODIFICADO: Se pasa el valor inicial de 0 para el tanto de la mesa
         socket.on('fase_declaracion_iniciada', (data) => {
             alert(data.mensaje);
             evaluarMiTurnoDeAnuncio(data.turno_idx, data.jugador_esperado, 0);
         });
 
-        // ✅ MODIFICADO: Se extrae el parámetro tanto_maximo_mesa del backend
         socket.on('siguiente_turno_declaracion', (data) => {
             evaluarMiTurnoDeAnuncio(data.turno_idx, data.jugador_esperado, data.tanto_maximo_mesa);
         });
@@ -340,20 +402,30 @@
             document.getElementById('texto-espera').innerText = data.mensaje;
         });
 
-        // ✅ MODIFICADO: Limpieza total de los carteles de espera visuales
         socket.on('envido_resuelto_quiero', (data) => {
             document.getElementById('botonera-anuncio-tanto').style.display = 'none';
             document.getElementById('texto-espera').style.display = 'none';
             alert(`🏆 ¡FIN DEL ENVIDO!\n\n${data.mensaje}`);
+            
+            // Devolvemos visibilidad de la botonera ofensiva de cartas al terminar los tantos
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if(!miRolActual.includes("Espectador")) {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
+            }
         });
 
         socket.on('envido_resuelto_no_quiero', (data) => {
             document.getElementById('botonera-respuesta-envido').style.display = 'none';
             document.getElementById('texto-espera').style.display = 'none';
             alert(`❌ ENVIDO RECHAZADO\n\n${data.mensaje}`);
+            
+            // Devolvemos visibilidad de la botonera ofensiva de cartas
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if(!miRolActual.includes("Espectador")) {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
+            }
         });
 
-        // ✅ MODIFICADO: Lógica de control inteligente para la visibilidad de los botones de anuncios
         function evaluarMiTurnoDeAnuncio(turnoIdxEsperado, stringJugadorEsperado, tantoMaximoMesa) {
             const miRolActual = document.getElementById('mi-rol').innerText;
             if (miRolActual.includes("Espectador")) return;
@@ -363,21 +435,19 @@
 
             const panelAnuncio = document.getElementById('botonera-anuncio-tanto');
             const btnAnunciar = document.getElementById('btn-anunciar-numero');
-            const btnBuenas = panelAnuncio.getElementsByTagName('button')[1];
+            const btnBuenas = document.getElementById('btn-son-buenas');
             
             if (idxMiSilla === parseInt(turnoIdxEsperado)) {
                 panelAnuncio.style.display = 'flex';
                 document.getElementById('label-tanto-calculado').innerText = `Tus tantos: ${miTantoLocalCalculado}`;
                 document.getElementById('texto-espera').innerText = "¡Es tu turno de declarar tus tantos!";
                 
-                // Si es el primer jugador (Jugador 1), se oculta "Son Buenas" para obligarlo a cantar
                 if (parseInt(turnoIdxEsperado) === 0) {
                     btnBuenas.style.display = 'none';
                     btnAnunciar.style.display = 'inline-block';
                     btnAnunciar.innerText = `💬 Cantar ${miTantoLocalCalculado}`;
                 } else {
                     btnBuenas.style.display = 'inline-block';
-                    // Si el tanto del jugador no supera el máximo de la mesa, se le oculta el botón de cantar número
                     let maxActual = parseInt(tantoMaximoMesa || 0);
                     if (miTantoLocalCalculado <= maxActual) {
                         btnAnunciar.style.display = 'none';
@@ -402,6 +472,84 @@
             });
             document.getElementById('botonera-anuncio-tanto').style.display = 'none';
         }
+
+        function gritarTruco(tipoGrito) {
+            const codigo = document.getElementById('codigo-sala').value.toUpperCase();
+            socket.emit('cantar_truco', {
+                codigo: codigo,
+                tipo: tipoGrito
+            });
+            document.getElementById('botonera-respuesta-truco').style.display = 'none';
+        }
+
+        function responderTruco(decision) {
+            const codigo = document.getElementById('codigo-sala').value.toUpperCase();
+            socket.emit('responder_truco', {
+                codigo: codigo,
+                decision: decision
+            });
+            document.getElementById('botonera-respuesta-truco').style.display = 'none';
+        }
+
+        socket.on('truco_gritado', (data) => {
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (miRolActual.includes("Espectador")) return;
+
+            const miNumeroJugador = parseInt(miRolActual.replace("Tu Rol actual: Jugador ", ""));
+            const miBando = (miNumeroJugador % 2 === 0) ? "Par" : "Impar";
+
+            if (miBando !== data.bando_emisor) {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+                
+                const panelRespuesta = document.getElementById('botonera-respuesta-truco');
+                panelRespuesta.style.display = 'flex';
+
+                document.getElementById('btn-responder-retruco').style.display = data.opciones.retruco ? 'inline-block' : 'none';
+                document.getElementById('btn-responder-vale4').style.display = data.opciones.vale_4 ? 'inline-block' : 'none';
+                document.getElementById('btn-envido-primero').style.display = data.opciones.envido_primero ? 'inline-block' : 'none';
+                
+                let msg = data.mensaje_especial ? data.mensaje_especial : `¡${data.rol} gritó ${data.tipo.toUpperCase()}! ¿Qué hace tu bando?`;
+                alert(msg);
+            } else {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+            }
+        });
+
+        socket.on('truco_resuelto', (data) => {
+            alert(data.mensaje);
+            const miRolActual = document.getElementById('mi-rol').innerText;
+            if (miRolActual.includes("Espectador")) return;
+
+            document.getElementById('botonera-truco-ofensiva').style.display = 'flex';
+
+            if (data.fase_truco === "truco_querido") {
+                document.getElementById('btn-gritar-truco').style.display = 'none';
+                document.getElementById('btn-gritar-retruco').style.display = 'inline-block';
+                document.getElementById('btn-gritar-vale4').style.display = 'none';
+            } else if (data.fase_truco === "retruco_querido") {
+                document.getElementById('btn-gritar-truco').style.display = 'none';
+                document.getElementById('btn-gritar-retruco').style.display = 'none';
+                document.getElementById('btn-gritar-vale4').style.display = 'inline-block';
+            } else {
+                document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+            }
+        });
+
+        socket.on('ronda_finalizada', (data) => {
+            alert(`📢 FIN DE RONDA ${data.ronda_numero}\nSe la adjudica el bando: ${data.bando_ganador}`);
+        });
+
+        socket.on('mano_finalizada', (data) => {
+            document.getElementById('botonera-truco-ofensiva').style.display = 'none';
+            document.getElementById('botonera-respuesta-truco').style.display = 'none';
+            document.getElementById('botonera-envido').style.display = 'none';
+            document.getElementById('botonera-respuesta-envido').style.display = 'none';
+            
+            document.getElementById('texto-espera').style.display = 'block';
+            document.getElementById('texto-espera').innerText = "Mano finalizada. Esperando el reparto del servidor...";
+            
+            alert(`🏁 MANO CONCLUIDA\n\n${data.mensaje}`);
+        });
     </script>
 </body>
 </html>
